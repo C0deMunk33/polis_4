@@ -1,4 +1,4 @@
-import { ItemsHelpers, ItemInventory, Item, ItemTemplate, ItemInteractionRequest } from './items';
+import { ItemsHelpers, ItemInventory, Item, ItemTemplate, ItemInteractionRequest } from '../lib/items';
 
 async function testItemSystem() {
   console.log("=== ITEM SYSTEM TEST ===\n");
