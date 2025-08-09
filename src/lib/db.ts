@@ -85,7 +85,27 @@ export class PolisDB {
   }
 
   listRecentChatByRoom(room: string, limit: number = 20): { timestamp: number; room: string; agentId: string; handle: string; content: string }[] {
-    const rows = this.db.prepare(`SELECT timestamp, room, agentId, handle, content FROM chat_messages WHERE room = ? ORDER BY id DESC LIMIT ?`).all(room, limit);
+    // Return the last N messages in chronological order to match incremental updates
+    const rows = this.db.prepare(`
+      SELECT timestamp, room, agentId, handle, content
+      FROM (
+        SELECT id, timestamp, room, agentId, handle, content
+        FROM chat_messages
+        WHERE room = ?
+        ORDER BY timestamp DESC, id DESC
+        LIMIT ?
+      )
+      ORDER BY timestamp ASC, id ASC
+    `).all(room, limit);
+    return rows as any[];
+  }
+
+  listChatByRoomSince(room: string, sinceTimestamp: number, limit: number = 200): { timestamp: number; room: string; agentId: string; handle: string; content: string }[] {
+    const rows = this.db.prepare(`SELECT timestamp, room, agentId, handle, content
+      FROM chat_messages
+      WHERE room = ? AND timestamp > ?
+      ORDER BY timestamp ASC
+      LIMIT ?`).all(room, sinceTimestamp, limit);
     return rows as any[];
   }
 

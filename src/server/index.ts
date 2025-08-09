@@ -145,7 +145,7 @@ const APP_JS = `
   function showTab(name){
     tabs.forEach(function(t){ var btn=$('tabbtn-'+t), el=$('tab-'+t); if(btn) btn.classList.toggle('active', t===name); if(el) el.style.display = (t===name?'block':'none'); });
     if (name==='dashboard') renderDashboard();
-    if (name==='rooms') renderRooms();
+    if (name==='rooms') ensureRoomsInitialized();
     if (name==='agents') renderAgents();
     history.replaceState(null,'','#'+name);
   }
@@ -153,14 +153,16 @@ const APP_JS = `
   // Dashboard
   function renderPass(p){
     var tools = ''; try { tools = JSON.parse(p.toolCallsJson).map(function(t){return t.name;}).join(', ');} catch(e){}
-    var execs = ''; try { execs = JSON.parse(p.executionsJson).join('\\n    ');} catch(e){}
-    return '<div class="card" style="margin-bottom:10px">'
-      + '<div><strong>' + new Date(p.timestamp).toLocaleTimeString() + '</strong> — <code>' + esc(p.agentId) + '</code></div>'
+    var execs = ''; try { execs = JSON.parse(p.executionsJson).join('\n    ');} catch(e){}
+    var div = document.createElement('div');
+    div.className = 'card';
+    div.style.marginBottom = '10px';
+    div.innerHTML = '<div><strong>' + new Date(p.timestamp).toLocaleTimeString() + '</strong> — <code>' + esc(p.agentId) + '</code></div>'
       + '<div>Intent: ' + esc(p.intent) + '</div>'
       + '<div class="muted">Thoughts: ' + esc(p.agentThoughts) + '</div>'
       + '<div>Tools: ' + esc(tools || '(none)') + '</div>'
-      + '<details><summary>Executions</summary><pre>' + esc(execs) + '</pre></details>'
-      + '</div>';
+      + '<details><summary>Executions</summary><pre>' + esc(execs) + '</pre></details>';
+    return div;
   }
   function renderDashboard(){
     var limit = Number(($('limit')||{}).value || 50);
@@ -170,10 +172,11 @@ const APP_JS = `
       fetchJSON(passesUrl), fetchJSON('/api/rooms'), fetchJSON('/api/agents')
     ]).then(function(res){
       var passes=res[0], rooms=res[1], agents=res[2];
-      if ($('passes')) $('passes').innerHTML = (passes.map(renderPass).join('')) || '<em class="muted">No passes yet</em>';
-      if ($('roomsList')) $('roomsList').innerHTML = '<ul class="muted">' + rooms.map(function(r){ return '<li>'+esc(r)+'</li>'; }).join('') + '</ul>';
-      if ($('agents')) {
-        $('agents').innerHTML = '<option value="">All agents</option>' + agents.map(function(a){
+      var passesEl = $('passes'); if (passesEl) { passesEl.textContent = ''; passes.map(renderPass).forEach(function(n){ passesEl.appendChild(n); }); if(!passes || passes.length===0) passesEl.innerHTML = '<em class="muted">No passes yet</em>'; }
+      var roomsList = $('roomsList'); if (roomsList) roomsList.innerHTML = '<ul class="muted">' + rooms.map(function(r){ return '<li>'+esc(r)+'</li>'; }).join('') + '</ul>';
+      var agentSelEl = $('agents');
+      if (agentSelEl) {
+        agentSelEl.innerHTML = '<option value="">All agents</option>' + agents.map(function(a){
           var last = new Date(a.lastTimestamp).toLocaleTimeString();
           return '<option value="' + esc(a.agentId) + '">' + esc(a.agentId) + ' (' + last + ')</option>';
         }).join('');
@@ -181,51 +184,109 @@ const APP_JS = `
     }).catch(function(e){ if ($('passes')) $('passes').innerHTML = '<pre>'+esc(e)+'</pre>'; });
   }
 
-  // Rooms
-  function renderRooms(){
+  // Rooms (vanilla incremental)
+  var roomsInit = false;
+  var roomState = {}; // name -> { lastChatTs }
+
+  function ensureRoomsInitialized(){
+    if (roomsInit) return;
+    roomsInit = true;
+    // First render of all cards
     fetchJSON('/api/room-snapshots').then(function(snaps){
-      var html = snaps.map(function(s){
-        return '<div class="card">'
+      var grid = $('roomsGrid'); if (!grid) return;
+      grid.textContent = '';
+      if (!snaps || snaps.length===0) { grid.innerHTML = '<em class="muted">No rooms</em>'; return; }
+      snaps.forEach(function(s){
+        roomState[s.name] = { lastChatTs: 0 };
+        var card = document.createElement('div');
+        card.className = 'card';
+        card.id = 'room-'+s.name;
+        card.setAttribute('data-room', s.name);
+        card.innerHTML = ''
           + '<h3>'+esc(s.name)+' '+(s.isPrivate?'(private)':'(public)')+'</h3>'
-          + '<div class="muted">Participants ('+(s.participants.length||0)+'): '+(s.participants.map(function(p){return esc(p.handle||p.agentId)}).join(', ')||'—')+'</div>'
-          + '<div>Items: '+(s.items.length? s.items.map(function(it){return esc(it.name)}).join(', ') : '—')+'</div>'
-          + '<details style="margin-top:8px" open><summary>Recent activity</summary><pre>'
-          + ((s.events||[]).map(function(ev){ return '['+new Date(ev.timestamp).toLocaleTimeString()+'] '+ev.type.toUpperCase()+': '+esc(ev.text); }).join('\\n') || 'No recent activity')
-          + '</pre></details>'
+          + '<div class="muted participants">Participants (0): —</div>'
+          + '<div>Items: <span class="items">—</span></div>'
+          + '<details class="activity" style="margin-top:8px" open><summary>Recent activity</summary><pre>Loading…</pre></details>'
           + '<details style="margin-top:8px" open id="chat-'+esc(s.name)+'"><summary>Recent chat</summary><pre>Loading…</pre></details>'
           + '<form data-room="'+esc(s.name)+'" class="room-form" style="margin-top:8px; display:flex; gap:8px; align-items:center;">'
-          + '<input type="text" name="handle" value="Admin" placeholder="Admin handle" />'
-          + '<input type="text" name="content" placeholder="Say something…" style="flex:1;" />'
-          + '<button class="primary" type="submit">Send</button>'
-          + '</form>'
-          + '</div>';
-      }).join('');
-      if ($('roomsGrid')) $('roomsGrid').innerHTML = html || '<em class="muted">No rooms</em>';
-
-      // Load chat for each room
-      (snaps||[]).forEach(function(s){
+          + '  <input type="text" name="handle" value="Admin" placeholder="Admin handle" />'
+          + '  <input type="text" name="content" placeholder="Say something…" style="flex:1;" />'
+          + '  <button class="primary" type="submit">Send</button>'
+          + '</form>';
+        grid.appendChild(card);
+        wireRoomForm(card);
+        // Initial fill
+        updateRoomCard(s);
+        // Initial chat load
         fetchJSON('/api/room-chat?room='+encodeURIComponent(s.name)).then(function(msgs){
-          var container = document.querySelector('#chat-'+CSS.escape(s.name)+' pre');
-          if (container) { container.textContent = (msgs||[]).map(function(m){ return '['+new Date(m.timestamp).toLocaleTimeString()+'] '+m.handle+' (#'+m.agentId+'): '+m.content; }).join('\\n') || 'No messages'; }
-        }).catch(function(){});
-      });
-
-      // Wire forms
-      Array.from(document.querySelectorAll('form.room-form')).forEach(function(f){
-        f.addEventListener('submit', function(e){
-          e.preventDefault();
-          var fd = new FormData(f);
-          var room = f.getAttribute('data-room');
-          fd.append('room', room||'');
-          var params = new URLSearchParams();
-          fd.forEach(function(value, key){ params.append(key, String(value)); });
-          fetch('/rooms/chat', { method:'POST', headers:{'content-type':'application/x-www-form-urlencoded'}, body: params.toString() })
-            .then(function(){ renderRooms(); });
+          var chatEl = $('chat-'+s.name); var pre = chatEl ? chatEl.querySelector('pre') : null;
+          if (pre) pre.textContent = (msgs||[]).map(function(m){ roomState[s.name].lastChatTs = Math.max(roomState[s.name].lastChatTs, Number(m.timestamp)||0); return '['+new Date(m.timestamp).toLocaleTimeString()+'] '+m.handle+' (#'+m.agentId+'): '+m.content; }).join('\n') || 'No messages';
         });
       });
     });
   }
 
+  function wireRoomForm(card){
+    var f = card.querySelector('form.room-form');
+    if (!f) return;
+    f.addEventListener('submit', function(e){
+      e.preventDefault();
+      var fd = new FormData(f);
+      var room = f.getAttribute('data-room');
+      fd.append('room', room||'');
+      var params = new URLSearchParams();
+      fd.forEach(function(value, key){ params.append(key, String(value)); });
+      fetch('/rooms/chat', { method:'POST', headers:{'content-type':'application/x-www-form-urlencoded'}, body: params.toString() })
+        .then(function(){
+          var input = f.querySelector('input[name="content"]'); if (input) { input.value=''; input.focus(); }
+          // pull latest chat since
+          var state = roomState[room||'']; var since = state ? state.lastChatTs : 0;
+          fetchJSON('/api/room-chat-since?room='+encodeURIComponent(room||'')+'&since='+encodeURIComponent(since)).then(function(msgs){
+            var chatEl = $('chat-'+room); var pre = chatEl ? chatEl.querySelector('pre') : null;
+            if (pre && msgs && msgs.length) {
+              var existing = pre.textContent || '';
+              msgs.forEach(function(m){ state.lastChatTs = Math.max(state.lastChatTs, Number(m.timestamp)||0); existing += (existing? '\n' : '') + '['+new Date(m.timestamp).toLocaleTimeString()+'] '+m.handle+' (#'+m.agentId+'): '+m.content; });
+              pre.textContent = existing;
+            }
+          });
+        });
+    });
+  }
+
+  function updateRoomCard(snapshot){
+    var name = snapshot.name;
+    var card = $('room-'+name); if (!card) return;
+    var participantsEl = card.querySelector('.participants');
+    if (participantsEl) participantsEl.textContent = 'Participants ('+(snapshot.participants.length||0)+'): '+(snapshot.participants.map(function(p){return (p.handle||p.agentId)}).join(', ')||'—');
+    var itemsEl = card.querySelector('.items');
+    if (itemsEl) itemsEl.textContent = snapshot.items.length ? snapshot.items.map(function(it){return it.name;}).join(', ') : '—';
+    var activityPre = card.querySelector('.activity pre');
+    if (activityPre) activityPre.textContent = ((snapshot.events||[]).map(function(ev){ return '['+new Date(ev.timestamp).toLocaleTimeString()+'] '+ev.type.toUpperCase()+': '+ev.text; }).join('\n') || 'No recent activity');
+  }
+
+  function tickRooms(){
+    var grid = $('roomsGrid'); if (!grid || !roomsInit) return;
+    // Update snapshots and incremental chat
+    fetchJSON('/api/room-snapshots').then(function(snaps){
+      var names = {};
+      (snaps||[]).forEach(function(s){ names[s.name]=true; if (!roomState[s.name]) roomState[s.name] = { lastChatTs: 0 }; updateRoomCard(s); });
+      // Remove cards for rooms that no longer exist
+      Array.from(grid.children).forEach(function(el){ var name = el.getAttribute && el.getAttribute('data-room'); if (name && !names[name]) grid.removeChild(el); });
+      // Chat since for each room
+      Object.keys(roomState).forEach(function(name){
+        var since = roomState[name].lastChatTs || 0;
+        fetchJSON('/api/room-chat-since?room='+encodeURIComponent(name)+'&since='+encodeURIComponent(since)).then(function(msgs){
+          if (!msgs || !msgs.length) return;
+          var chatEl = $('chat-'+name); var pre = chatEl ? chatEl.querySelector('pre') : null; if (!pre) return;
+          var existing = pre.textContent || '';
+          msgs.forEach(function(m){ roomState[name].lastChatTs = Math.max(roomState[name].lastChatTs, Number(m.timestamp)||0); existing += (existing? '\n' : '') + '['+new Date(m.timestamp).toLocaleTimeString()+'] '+m.handle+' (#'+m.agentId+'): '+m.content; });
+          pre.textContent = existing;
+        }).catch(function(){});
+      });
+    }).catch(function(){});
+  }
+
+  // Agents (unchanged)
   var selectedAgentId = '';
   function renderAgents(){
     fetchJSON('/api/agents').then(function(list){
@@ -251,7 +312,7 @@ const APP_JS = `
     if (!selectedAgentId) { if ($('agentHistory')) $('agentHistory').textContent = 'Select an agent'; return; }
     if ($('agentTitle')) $('agentTitle').textContent = 'Agent — '+selectedAgentId;
     fetchJSON('/api/passes?agentId='+encodeURIComponent(selectedAgentId)+'&limit='+encodeURIComponent(limit)).then(function(list){
-      if ($('agentHistory')) $('agentHistory').innerHTML = (list||[]).map(renderPass).join('') || '<em class="muted">No passes yet</em>';
+      if ($('agentHistory')) $('agentHistory').innerHTML = (list||[]).map(function(p){ var n = renderPass(p); return n.outerHTML; }).join('') || '<em class="muted">No passes yet</em>';
     }).catch(function(e){ if ($('agentHistory')) $('agentHistory').innerHTML = '<pre>'+esc(e)+'</pre>'; });
   }
 
@@ -260,13 +321,36 @@ const APP_JS = `
   btns.forEach(function(b){ b.addEventListener('click', function(){ showTab(b.getAttribute('data-tab')); }); });
   var start = (location.hash||'#dashboard').slice(1);
   showTab(tabs.includes(start)? start : 'dashboard');
-  setInterval(function(){ var activeBtn = document.querySelector('nav button.active'); var current = activeBtn && activeBtn.dataset ? activeBtn.dataset.tab : null; if(current==='dashboard') renderDashboard(); if(current==='rooms') renderRooms(); if(current==='agents') { renderAgents(); } }, 3000);
+
+  // Periodic updates without nuking DOM
+  setInterval(function(){
+    var activeBtn = document.querySelector('nav button.active'); var current = activeBtn && activeBtn.dataset ? activeBtn.dataset.tab : null;
+    if(current==='dashboard') renderDashboard();
+    if(current==='rooms') tickRooms();
+    if(current==='agents') renderAgents();
+  }, 3000);
 })();
 `;
 
 app.get('/app.js', (_req: Request, res: Response) => {
-  res.setHeader('content-type', 'application/javascript; charset=utf-8');
-  res.end(APP_JS);
+  try {
+    const fs = require('fs');
+    const path = require('path');
+    const distPath = path.join(__dirname, 'app.client.js');
+    const srcPath = path.join(__dirname, 'app.client.js'); // compiled output will place it alongside
+    let js = '';
+    if (fs.existsSync(distPath)) { js = fs.readFileSync(distPath, 'utf8'); }
+    else {
+      // Fall back to source file during dev run before tsc copies it
+      const srcAlt = path.join(__dirname, '../../src/server/app.client.js');
+      js = fs.readFileSync(srcAlt, 'utf8');
+    }
+    res.setHeader('content-type', 'application/javascript; charset=utf-8');
+    res.end(js);
+  } catch (e) {
+    res.setHeader('content-type', 'application/javascript; charset=utf-8');
+    res.end('console.error("Failed to load app.js")');
+  }
 });
 
 app.get('/app.css', (_req: Request, res: Response) => {
@@ -301,10 +385,25 @@ app.get('/api/room-snapshots', (req: Request, res: Response) => {
   res.json(snaps);
 });
 
+app.get('/api/room-snapshot', (req: Request, res: Response) => {
+  const name = String(req.query.name || '').trim();
+  if (!name) return res.status(400).json({ error: 'name required' });
+  const snaps = buildRoomSnapshotsFromDB(400);
+  const snap = snaps.find(s => s.name === name);
+  res.json(snap || null);
+});
+
 app.get('/api/room-chat', (req: Request, res: Response) => {
   const room = String(req.query.room || '').trim();
   if (!room) return res.json([]);
   res.json(db.listRecentChatByRoom(room, 20));
+});
+
+app.get('/api/room-chat-since', (req: Request, res: Response) => {
+  const room = String(req.query.room || '').trim();
+  const since = Number(req.query.since || 0);
+  if (!room) return res.json([]);
+  res.json(db.listChatByRoomSince(room, since, 200));
 });
 
 app.get('/', (req: Request, res: Response) => {
