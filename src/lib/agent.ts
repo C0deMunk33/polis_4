@@ -46,7 +46,6 @@ export class Agent {
     setHandle(newHandle: string): string {
         this.handleValue = newHandle;
         try {
-            // Update chat presence/handle if chat is available
             const result = this.menu.callTool(this, { name: 'enter', parameters: { handle: newHandle } });
             return result;
         } catch {
@@ -64,6 +63,14 @@ export class Agent {
 
     setSelf(newSelf: Record<string, string>): void {
         this.selfState = { ...newSelf };
+    }
+
+    setMenu(newMenu: Menu): void {
+        this.menu = newMenu;
+    }
+
+    getMenuInstance(): Menu {
+        return this.menu;
     }
 
     private buildToolCatalog(): string {
@@ -141,14 +148,16 @@ export class Agent {
         for (const tc of result.toolCalls) {
             try {
                 if (tc.name === 'enter') {
-                    const who = this.menu.callTool(this, { name: 'who', parameters: {} });
+                    const whoAny = this.menu.callTool(this, { name: 'who', parameters: {} }) as any;
+                    const who = typeof (whoAny as any)?.then === 'function' ? await whoAny : whoAny;
                     if (who && who.includes(`(#${this.id})`)) {
                         executions.push(`model:enter -> skipped (already present)`);
                         continue;
                     }
                 }
 
-                const out = this.menu.callTool(this, tc);
+                const maybe = this.menu.callTool(this, tc) as any;
+                const out = typeof (maybe as any)?.then === 'function' ? await maybe : maybe;
                 executions.push(`model:${tc.name} -> ${out}`);
             } catch (err) {
                 executions.push(`model:${tc.name} -> Error ${err}`);
@@ -157,7 +166,8 @@ export class Agent {
 
         for (const call of extraPostToolCalls) {
             try {
-                const out = this.menu.callTool(this, call);
+                const maybe = this.menu.callTool(this, call) as any;
+                const out = typeof (maybe as any)?.then === 'function' ? await maybe : maybe;
                 executions.push(`post:${call.name} -> ${out}`);
             } catch (err) {
                 executions.push(`post:${call.name} -> Error ${err}`);

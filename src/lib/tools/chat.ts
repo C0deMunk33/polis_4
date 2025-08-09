@@ -184,5 +184,13 @@ export function createChatToolset(toolsetName: string = "Chat"): Toolset {
     }
   };
 
-  return new Toolset(toolsetName, tools, { toolsetName, callback: toolsetCallback });
+  const ts = new Toolset(toolsetName, tools, { toolsetName, callback: toolsetCallback });
+  (ts as any).getRecentMessages = (limit: number = 10) => {
+    const slice = messages.slice(-Math.max(0, Number(limit) || 0));
+    return slice.map(m => ({ timestamp: m.timestamp, agentId: m.agentId, handle: m.handle, content: m.content }));
+  };
+  (ts as any).getParticipants = () => {
+    return Array.from(participants.entries()).map(([agentId, info]) => ({ agentId, handle: info.handle, joinedAt: info.joinedAt }));
+  };
+  return ts;
 }

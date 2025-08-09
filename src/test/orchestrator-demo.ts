@@ -47,7 +47,7 @@ async function runOrchestratorDemo() {
 
   orchestrator.start();
 
-  await new Promise((res) => setTimeout(res, 20000));
+  await new Promise((res) => setTimeout(res, 40000));
   orchestrator.stop();
 
   console.log("\n=== ORCHESTRATOR DEMO COMPLETE ===");
