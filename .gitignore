@@ -1,3 +1,6 @@
+# Local db
+polis.sqlite3
+
 # Dependencies
 node_modules/
 npm-debug.log*
