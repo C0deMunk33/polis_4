@@ -70,10 +70,10 @@ export class AgentOrchestrator {
       this.sharedToolsets.unshift(this.chatToolset);
     }
 
-    this.polis = new Polis();
-    this.overviewMenu = new Menu([this.polis.getDirectoryToolset(), ...this.sharedToolsets]);
-
+    // Initialize DB first so it can be passed to Polis
     this.db = new PolisDB(this.options.dbFile ?? 'polis.sqlite3');
+    this.polis = new Polis(this.db);
+    this.overviewMenu = new Menu([this.polis.getDirectoryToolset(), ...this.sharedToolsets]);
   }
 
   getMenu(): Menu { return this.overviewMenu; }

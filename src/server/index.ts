@@ -8,7 +8,7 @@ const app = express();
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 const db = new PolisDB(process.env.POLIS_DB || 'polis.sqlite3');
-const polis = new Polis();
+const polis = new Polis(db);
 
 type RoomEvent = { timestamp: number; type: 'chat' | 'item' | 'interact' | 'join' | 'createRoom'; text: string; agentId: string };
 type RoomSnapshot = { name: string; isPrivate?: boolean; participants: { agentId: string; handle?: string }[]; items: { name: string; ownerId: string }[]; events: RoomEvent[] };

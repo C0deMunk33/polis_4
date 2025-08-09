@@ -28,7 +28,10 @@ interface ParticipantInfo {
  * - chat: Post a message (caller only)
  * - read: Read recent messages (caller only)
  */
-export function createChatToolset(toolsetName: string = "Chat"): Toolset {
+export function createChatToolset(
+  toolsetName: string = "Chat",
+  onMessage?: (entry: { timestamp: number; agentId: string; handle: string; content: string }) => void
+): Toolset {
   const messages: ChatMessage[] = [];
   const participants: Map<string, ParticipantInfo> = new Map();
 
@@ -153,6 +156,7 @@ export function createChatToolset(toolsetName: string = "Chat"): Toolset {
             content: String(content)
           };
           messages.push(entry);
+          try { onMessage?.(entry); } catch {}
           return `Message posted by ${entry.handle} (#${entry.agentId})`;
         }
         case "read": {

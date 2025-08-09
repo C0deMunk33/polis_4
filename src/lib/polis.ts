@@ -3,6 +3,7 @@ import { Toolset, ToolCall, ToolSchema } from "./toolset";
 import { createChatToolset } from "./tools/chat";
 import { Agent } from "./agent";
 import { ItemsHelpers, Item } from "./items";
+import { PolisDB } from "./db";
 
 interface RoomItem {
   ownerId: string;
@@ -24,7 +25,11 @@ export class Room {
     this.name = name;
     this.isPrivate = isPrivate;
 
-    this.chat = createChatToolset(`${name}: Chat`);
+    this.chat = createChatToolset(`${name}: Chat`, (entry) => {
+      try {
+        this.polis.onChatMessage?.(this.name, entry);
+      } catch {}
+    });
     this.itemsToolset = this.createRoomItemsToolset();
     this.admin = this.createRoomAdminToolset();
 
@@ -167,14 +172,29 @@ export class Polis {
   private rooms = new Map<string, Room>();
   private directoryToolset: Toolset;
   private directoryMenu: Menu;
+  private db?: PolisDB;
 
-  constructor() {
+  constructor(db?: PolisDB) {
+    this.db = db;
     this.directoryToolset = this.createDirectoryToolset();
     this.directoryMenu = new Menu([this.directoryToolset]);
   }
 
   getDirectoryMenu(): Menu { return this.directoryMenu; }
   getDirectoryToolset(): Toolset { return this.directoryToolset; }
+
+  // Persist chat messages (called by rooms)
+  onChatMessage(room: string, entry: { timestamp: number; agentId: string; handle: string; content: string }) {
+    try {
+      this.db?.insertChatMessage({
+        timestamp: entry.timestamp,
+        room,
+        agentId: entry.agentId,
+        handle: entry.handle,
+        content: entry.content
+      });
+    } catch {}
+  }
 
   listRooms(): string[] { return Array.from(this.rooms.keys()); }
 
