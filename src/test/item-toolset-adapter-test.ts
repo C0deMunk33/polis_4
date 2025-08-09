@@ -1,6 +1,6 @@
-import { Menu } from "./menu";
-import { ItemToolsetAdapter } from "./item-toolset-adapter";
-import { ItemsHelpers, Item } from "./items";
+import { Menu } from "../lib/menu";
+import { ItemToolsetAdapter } from "../lib/item-toolset-adapter";
+import { ItemsHelpers, Item } from "../lib/items";
 
 async function testItemToolsetAdapter() {
     console.log("=== Item Toolset Adapter Test ===\n");

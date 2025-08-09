@@ -40,7 +40,7 @@ export class ItemToolsetAdapter {
 
         const tools: ToolSchema[] = [...interactionTools, resetTool];
 
-        const toolsetCallback = (toolcall: ToolCall): string => {
+        const toolsetCallback = (_agent: any | undefined, toolcall: ToolCall): string => {
             try {
                 if (toolcall.name === "reset") {
                     // Handle reset
@@ -85,7 +85,7 @@ export class ItemToolsetAdapter {
             }
         };
 
-        return new Toolset(name, tools, toolsetCallback);
+        return new Toolset(name, tools, { toolsetName: name, callback: toolsetCallback });
     }
 
     /**
@@ -269,7 +269,7 @@ export class ItemToolsetAdapter {
             });
         });
 
-        const toolsetCallback = (toolcall: ToolCall): string => {
+        const toolsetCallback = (_agent: any | undefined, toolcall: ToolCall): string => {
             try {
                 const [itemName, interactionName] = toolcall.name.split('_');
                 const itemIndex = toolcall.parameters.itemIndex;
@@ -313,7 +313,7 @@ export class ItemToolsetAdapter {
             }
         };
 
-        return new Toolset(toolsetName, tools, toolsetCallback);
+        return new Toolset(toolsetName, tools, { toolsetName, callback: toolsetCallback });
     }
 
     /**
@@ -354,7 +354,7 @@ export class ItemToolsetAdapter {
             }
         ];
 
-        const toolsetCallback = (toolcall: ToolCall): string => {
+        const toolsetCallback = (_agent: any | undefined, toolcall: ToolCall): string => {
             try {
                 switch (toolcall.name) {
                     case "listItems":
@@ -409,6 +409,6 @@ export class ItemToolsetAdapter {
             }
         };
 
-        return new Toolset(toolsetName, tools, toolsetCallback);
+        return new Toolset(toolsetName, tools, { toolsetName, callback: toolsetCallback });
     }
 } 

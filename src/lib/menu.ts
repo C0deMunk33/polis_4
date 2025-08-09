@@ -1,4 +1,5 @@
 import { ToolCall, Toolset } from "./toolset";
+import type { Agent } from "./agent";
 
 export class Menu {
     toolsets: Toolset[] = [];
@@ -18,7 +19,7 @@ export class Menu {
             // show list of tools and toolList function
             resultString += `\nTool Menu (${this.currentToolset}):\n`;
             for (const tool of this.toolsets.find((toolset) => toolset.name === this.currentToolset)?.getTools() ?? []) {
-                resultString += `\t${tool.name} (${tool.parameters.map((param) => param.name).join(", ")}): ${tool.description}\n`;
+                resultString += `\t${tool.name} (${tool.parameters.map((param) => param.name).join(", ") }): ${tool.description}\n`;
             }
             resultString += "To return to the toolset menu, use toolList()\n";
         } else {
@@ -54,7 +55,15 @@ export class Menu {
         }
     }
 
-    callTool(toolcall: ToolCall) : string {
+    callTool(toolcall: ToolCall) : string;
+    callTool(agent: Agent, toolcall: ToolCall) : string;
+    callTool(arg1: Agent | ToolCall, arg2?: ToolCall) : string {
+        if (arg2) {
+            const agent = arg1 as Agent;
+            const toolcall = arg2;
+            return this.toolsets.find((toolset) => toolset.getTools().some((tool) => tool.name === toolcall.name))?.callTool(agent, toolcall) ?? "";
+        }
+        const toolcall = arg1 as ToolCall;
         return this.toolsets.find((toolset) => toolset.getTools().some((tool) => tool.name === toolcall.name))?.callTool(toolcall) ?? "";
     }
 

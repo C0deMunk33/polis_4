@@ -1,5 +1,5 @@
-import { Toolset, ToolCall } from "./toolset";
-import { Menu } from "./menu";
+import { Toolset, ToolCall } from "../lib/toolset";
+import { Menu } from "../lib/menu";
 
 // Demo Toolset 1: Calculator Tools
 const calculatorTools = [
