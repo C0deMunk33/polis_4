@@ -1,6 +1,7 @@
 import { Menu } from "./menu";
 import { Toolset, ToolCall, ToolSchema } from "./toolset";
 import { createChatToolset } from "./tools/chat";
+import { createIdentityToolset } from "./tools/identity";
 import { Agent } from "./agent";
 import { ItemsHelpers, Item, ItemInteraction, ItemInteractionRequest } from "./items";
 import { PolisDB } from "./db";
@@ -33,7 +34,7 @@ export class Room {
     this.itemsToolset = this.createRoomItemsToolset();
     this.admin = this.createRoomAdminToolset();
 
-    this.menu = new Menu([this.chat, this.itemsToolset, this.admin]);
+    this.menu = new Menu([createIdentityToolset(), this.chat, this.itemsToolset, this.admin]);
   }
 
   // Snapshot for UI rendering
@@ -53,6 +54,7 @@ export class Room {
       ]},
       { name: "makePrivate", description: "Make this room private", parameters: [] },
       { name: "makePublic", description: "Make this room public", parameters: [] },
+      { name: "leaveRoom", description: "Leave this room (return to directory and leave chat)", parameters: [] },
       { name: "recentActivity", description: "Show recent chat and item overview", parameters: [
         { name: "limit", description: "Max chat messages to show", type: "number", enum: [], default: "5" }
       ]},
@@ -76,6 +78,12 @@ export class Room {
         case "makePublic":
           this.isPrivate = false;
           return `Room ${this.name} is now public`;
+        case "leaveRoom": {
+          // Ensure agent exits chat and return to directory
+          try { this.chat.callTool(agent, { name: "leave", parameters: {} }); } catch {}
+          agent.setMenu(this.polis.getDirectoryMenu());
+          return `Left room ${this.name}`;
+        }
         case "recentActivity": {
           const limit = Number((toolcall.parameters as any).limit ?? 5);
           let chat = "";
@@ -86,9 +94,12 @@ export class Room {
           const itemsList = this.items.length === 0 ? "No items" : this.items.map((ri, idx) => `[${idx}] ${ri.item.template.name} (owner:#${ri.ownerId})`).join("\n");
           return `Room: ${this.name}\nItems:\n${itemsList}\n\nRecent Chat:\n${chat}`;
         }
-        case "returnToDirectory":
+        case "returnToDirectory": {
+          // Also leave chat when returning to directory
+          try { this.chat.callTool(agent, { name: "leave", parameters: {} }); } catch {}
           agent.setMenu(this.polis.getDirectoryMenu());
           return `Returned to directory`;
+        }
         default:
           return `Unknown tool: ${toolcall.name}`;
       }
@@ -183,7 +194,7 @@ export class Polis {
   constructor(db?: PolisDB) {
     this.db = db;
     this.directoryToolset = this.createDirectoryToolset();
-    this.directoryMenu = new Menu([this.directoryToolset]);
+    this.directoryMenu = new Menu([this.directoryToolset, createIdentityToolset()]);
   }
 
   getDirectoryMenu(): Menu { return this.directoryMenu; }

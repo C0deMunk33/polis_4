@@ -8,6 +8,13 @@ export function createIdentityToolset(name: string = "Identity"): Toolset {
       parameters: []
     },
     {
+      name: "setGoal",
+      description: "Update your current goal (stored as self['goal'])",
+      parameters: [
+        { name: "goal", description: "Your new goal sentence", type: "string", enum: [], default: "" }
+      ]
+    },
+    {
       name: "setHandle",
       description: "Set a new handle for yourself (does not auto-enter chat)",
       parameters: [
@@ -51,6 +58,13 @@ export function createIdentityToolset(name: string = "Identity"): Toolset {
         if (!key) return "Error: key is required";
         agent.setSelfField?.(String(key), String(value ?? ""));
         return `Self[${key}] set`;
+      }
+      case "setGoal": {
+        const { goal } = toolcall.parameters as any;
+        const newGoal = String(goal || "").trim();
+        if (!newGoal) return "Error: goal is required";
+        agent.setSelfField?.("goal", newGoal);
+        return `Goal set: ${newGoal}`;
       }
       default:
         return `Unknown tool: ${toolcall.name}`;

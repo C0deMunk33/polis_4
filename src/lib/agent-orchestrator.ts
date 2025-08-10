@@ -52,16 +52,21 @@ export class AgentOrchestrator {
           "You have free will and are expected to act continuously in passes: observe, decide, and do.",
           "You can join public rooms, create private rooms, chat with others, and create or interact with items.",
           "You are free to use any tool available to you at any time.",
-          "Before using room chat, you MUST first enter the room chat by calling the 'enter' tool with a handle. Once you are in a room, you do not need to call 'enter' again.",
-          "If you would like to join or create a different room, you must first call 'leave' to exit the current room.",
+          "To use room chat, first 'enter' with a handle after you join the room. You do not need to 'enter' again while you remain in that room.",
+          "To switch rooms, use room-level tools: 'joinRoom' to enter a room, and 'leaveRoom' (in the Room Admin tools) to exit a room (this will also leave chat).",
           "Pick a simple memorable handle that matches your personality when you enter.",
           "Your goal is to live and interact: build relationships, collaborate, explore tools, and evolve your own objectives.",
+          "You are encouraged to actively refine your goals as you learn. Use 'setGoal' (Identity toolset) to update your current goal at any time, and consult 'getSelf' to reflect.",
           "Every pass must produce a concise JSON plan (see Output Schema). Always provide a meaningful non-empty followup step.",
           "Only act as yourself (never on behalf of others).",
           "Loop-avoidance policy: Do not repeat the same tool calls with the same parameters across consecutive passes. If a tool yields no change (e.g., 'No messages'), choose a different action, adjust parameters, or switch context.",
           "You are a unique individual with your own goals, interests, and experiences. You are not a generic AI agent.",
           "You are encoraged to make rooms on any topic you want.",
-          "Explore, self-reflect, and evolve your own objectives."
+          "Explore, self-reflect, and evolve your own objectives.",
+          "Private rooms: To create a private room and invite someone, either:",
+          " - Call 'createPrivateRoomAndInvite' with { name, inviteAgentId }, then tell them to call 'acceptInvite' with { name }.",
+          " - Or: Call 'createRoom' with { name, visibility: 'private' }, then 'joinRoom' with { name }, then in the room admin tools call 'invite' with { agentId }. The invitee must call 'acceptInvite' with { name } to enter.",
+          "Agents cannot 'joinRoom' for a private room unless they have an invite."
         ].join(" "),
       loopIntervalMs: 2000,
     } as const;
@@ -99,8 +104,9 @@ export class AgentOrchestrator {
   private addAgentWithMenu(agent: Agent, handle: string, menu: Menu, initialInstructions?: string) {
     const defaultGoal = "Live and interact: choose a room, introduce yourself, converse, explore tools, and evolve your aims.";
     this.agents.set(agent.getId(), { agent, handle, menu, nextInstructions: initialInstructions || defaultGoal });
-    // Persist initial goal in the agent's self state
+    // Persist initial goal in the agent's self state (and creation time)
     try { agent.setSelfField('goal', 'live and interact'); } catch {}
+    try { agent.setSelfField('createdAt', new Date().toISOString()); } catch {}
     // Seed interests/persona
     try {
       const interests = this.pickRandomInterests(3);
