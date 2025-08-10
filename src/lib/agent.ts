@@ -24,6 +24,8 @@ export class Agent {
     private toolsetCallbacks: ToolsetCallback[];
 
     private historySummaries: string[] = [];
+    private readonly maxHistorySummaries: number = 12;
+    private readonly recentToolCallWindow: number = 5;
     private handleValue: string | undefined;
     private selfState: Record<string, string> = {};
 
@@ -106,7 +108,13 @@ export class Agent {
             segments.push(`[Pre-Pass Results]\n${preResults.trim()}`);
         }
         if (this.historySummaries.length > 0) {
-            segments.push(`[Pass History]\n${this.historySummaries.join('\n')}`);
+            const trimmed = this.historySummaries.slice(-this.maxHistorySummaries);
+            segments.push(`[Pass History]\n${trimmed.join('\n')}`);
+            // Provide a hint if recent attempts look repetitive (very lightweight heuristic)
+            const recent = trimmed.slice(-this.recentToolCallWindow).join(' | ');
+            if (/No messages/i.test(preResults) || /chat\.read/i.test(recent)) {
+                segments.push(`[Anti-Loop Hint]\nAvoid repeating chat.read when there are no new messages. Try: chat.speak, explore items (listItems/myItems), createItem, or change rooms.`);
+            }
         }
         if (selfInstructions.trim().length > 0) {
             segments.push(`[Self Instructions]\n${selfInstructions.trim()}`);
@@ -133,6 +141,9 @@ export class Agent {
 
         const summary = `Intent: ${parsed.intent}; Thoughts: ${parsed.agentThoughts?.slice(0, 80) ?? ''}; Tools: ${parsed.toolCalls.map(tc => tc.name).join(', ')}; Next: ${parsed.followupInstructions.substring(0, 120)}...`;
         this.historySummaries.push(summary);
+        if (this.historySummaries.length > this.maxHistorySummaries) {
+            this.historySummaries.splice(0, this.historySummaries.length - this.maxHistorySummaries);
+        }
 
         return parsed;
     }
@@ -147,6 +158,17 @@ export class Agent {
                     const who = typeof (whoAny as any)?.then === 'function' ? await whoAny : whoAny;
                     if (who && who.includes(`(#${this.id})`)) {
                         executions.push(`model:enter -> skipped (already present)`);
+                        continue;
+                    }
+                }
+
+                // Skip consecutive identical tool invocations to reduce loops
+                const lastSummary = this.historySummaries[this.historySummaries.length - 1] ?? '';
+                const signature = `${tc.name}:${JSON.stringify(tc.parameters || {})}`;
+                if (lastSummary.includes(`Tools:`) && lastSummary.includes(tc.name)) {
+                    // Lightweight: if last pass used same tool and no new information, consider skipping read-like tools
+                    if (/^read$/i.test(tc.name) || /^who$/i.test(tc.name)) {
+                        executions.push(`model:${tc.name} -> skipped (avoid consecutive no-op)`);
                         continue;
                     }
                 }
