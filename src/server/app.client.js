@@ -18,6 +18,8 @@
   function renderPass(p){
     var tools = ''; try { tools = JSON.parse(p.toolCallsJson).map(function(t){return t.name;}).join(', ');} catch(e){}
     var execs = ''; try { execs = JSON.parse(p.executionsJson).join('\n    ');} catch(e){}
+    var mb = '';
+    try { if (p.messageBufferJson) { mb = JSON.stringify(JSON.parse(p.messageBufferJson), null, 2); } } catch(e){}
     var div = document.createElement('div');
     div.className = 'card';
     div.style.marginBottom = '10px';
@@ -25,7 +27,8 @@
       + '<div>Intent: ' + esc(p.intent) + '</div>'
       + '<div class="muted">Thoughts: ' + esc(p.agentThoughts) + '</div>'
       + '<div>Tools: ' + esc(tools || '(none)') + '</div>'
-      + '<details><summary>Executions</summary><pre>' + esc(execs) + '</pre></details>';
+      + '<details><summary>Executions</summary><pre>' + esc(execs) + '</pre></details>'
+      + (mb ? ('<details><summary>Message buffer</summary><pre>' + esc(mb) + '</pre></details>') : '');
     return div;
   }
   function renderDashboard(){

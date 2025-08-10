@@ -57,8 +57,7 @@ export class Room {
       { name: "leaveRoom", description: "Leave this room (return to directory and leave chat)", parameters: [] },
       { name: "recentActivity", description: "Show recent chat and item overview", parameters: [
         { name: "limit", description: "Max chat messages to show", type: "number", enum: [], default: "5" }
-      ]},
-      { name: "returnToDirectory", description: "Return to the polis room directory", parameters: [] }
+      ]}
     ];
 
     const callback = (agent: Agent | undefined, toolcall: ToolCall): string => {
@@ -96,18 +95,12 @@ export class Room {
           const itemsList = this.items.length === 0 ? "No items" : this.items.map((ri, idx) => `[${idx}] ${ri.item.template.name} (owner:#${ri.ownerId})`).join("\n");
           return `Room: ${this.name}\nItems:\n${itemsList}\n\nRecent Chat:\n${chat}`;
         }
-        case "returnToDirectory": {
-          // Also leave chat when returning to directory
-          try { this.chat.callTool(agent, { name: "leave", parameters: {} }); } catch {}
-          agent.setMenu(this.polis.getDirectoryMenu());
-          return `Returned to directory`;
-        }
         default:
           return `Unknown tool: ${toolcall.name}`;
       }
     };
 
-    return new Toolset(`${this.name}: Room Admin`, tools, { toolsetName: `${this.name}: Room Admin`, callback });
+    return new Toolset(`${this.name}: Room Actions`, tools, { toolsetName: `${this.name}: Room Actions`, callback });
   }
 
   private createRoomItemsToolset(): Toolset {

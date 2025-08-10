@@ -52,8 +52,9 @@ export class AgentOrchestrator {
           "You have free will and are expected to act continuously in passes: observe, decide, and do.",
           "You can join public rooms, create private rooms, chat with others, and create or interact with items.",
           "You are free to use any tool available to you at any time.",
-          "To use room chat, first 'enter' with a handle after you join the room. You do not need to 'enter' again while you remain in that room.",
-          "To switch rooms, use room-level tools: 'joinRoom' to enter a room, and 'leaveRoom' (in the Room Admin tools) to exit a room (this will also leave chat).",
+          "To use room chat, first 'enter' with a handle after you join the room.",
+          "Room switching policy: You can only create or join a different room after you leave your current room.",
+          "Use room-level tools: 'joinRoom' to enter a room, and 'leaveRoom' (in the Room Actions tools) to exit a room (this will also leave chat).",
           "Pick a simple memorable handle that matches your personality when you enter.",
           "Your goal is to live and interact: build relationships, collaborate, explore tools, and evolve your own objectives.",
           "You are encouraged to actively refine your goals as you learn. Use 'setGoal' (Identity toolset) to update your current goal at any time, and consult 'getSelf' to reflect.",
@@ -172,7 +173,22 @@ export class AgentOrchestrator {
     const pass: AgentPass = await reg.agent.doPass(reg.nextInstructions, preResults);
     const executions = await reg.agent.postPass(pass, this.options.postPassToolCalls ?? []);
     reg.nextInstructions = pass.followupInstructions?.trim().length ? pass.followupInstructions : "Propose the next concrete action or reflection step.";
-    try { this.db.insertPass({ timestamp: Date.now(), agentId, intent: pass.intent, agentThoughts: pass.agentThoughts, toolCallsJson: JSON.stringify(pass.toolCalls), followupInstructions: reg.nextInstructions, preResults, menuSnapshot: reg.agent.getMenuInstance().getMenu(), executionsJson: JSON.stringify(executions) }); } catch {}
+    try {
+      const mb = reg.agent.getLastMessageBuffer();
+      const messageBufferJson = mb ? JSON.stringify(mb) : undefined;
+      this.db.insertPass({
+        timestamp: Date.now(),
+        agentId,
+        intent: pass.intent,
+        agentThoughts: pass.agentThoughts,
+        toolCallsJson: JSON.stringify(pass.toolCalls),
+        followupInstructions: reg.nextInstructions,
+        preResults,
+        menuSnapshot: reg.agent.getMenuInstance().getMenu(),
+        executionsJson: JSON.stringify(executions),
+        messageBufferJson,
+      });
+    } catch {}
     this.options.onPassComplete?.({ agentId, intent: pass.intent, followup: reg.nextInstructions, toolCalls: pass.toolCalls, executions });
   }
 

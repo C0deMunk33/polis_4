@@ -23,6 +23,8 @@ export class Agent {
     private menu: Menu;
     private toolsetCallbacks: ToolsetCallback[];
 
+    private lastMessageBuffer: { system: string; messages: { role: 'user' | 'assistant'; content: string }[] } | null = null;
+
     private historySummaries: string[] = [];
     private readonly maxHistorySummaries: number = 12;
     private readonly recentToolCallWindow: number = 5;
@@ -68,6 +70,10 @@ export class Agent {
 
     getMenuInstance(): Menu {
         return this.menu;
+    }
+
+    getLastMessageBuffer(): { system: string; messages: { role: 'user' | 'assistant'; content: string }[] } | null {
+        return this.lastMessageBuffer;
     }
 
     private buildToolCatalog(): string {
@@ -127,6 +133,7 @@ export class Agent {
     async doPass(selfInstructions: string, preResults: string = ""): Promise<AgentPass> {
         const menuText = this.menu.getMenu();
         const { system, messages } = this.buildMessageBuffer(menuText, preResults, selfInstructions);
+        this.lastMessageBuffer = { system, messages };
         const response = await getStructuredOutput(system, messages, this.model, AgentPassSchema);
         if (!response) {
             throw new Error('No response from model');

@@ -64,10 +64,14 @@ export class Menu {
         if (arg2) {
             const agent = arg1 as Agent;
             const toolcall = arg2;
-            return this.toolsets.find((toolset) => toolset.getTools().some((tool) => tool.name === toolcall.name))?.callTool(agent, toolcall) ?? "";
+            const toolset = this.toolsets.find((toolset) => toolset.getTools().some((tool) => tool.name === toolcall.name));
+            if (!toolset) return `tool ${toolcall.name} is not available`;
+            return toolset.callTool(agent, toolcall);
         }
         const toolcall = arg1 as ToolCall;
-        return this.toolsets.find((toolset) => toolset.getTools().some((tool) => tool.name === toolcall.name))?.callTool(toolcall) ?? "";
+        const toolset = this.toolsets.find((toolset) => toolset.getTools().some((tool) => tool.name === toolcall.name));
+        if (!toolset) return `tool ${toolcall.name} is not available`;
+        return toolset.callTool(toolcall);
     }
 
     loadToolset(name: string) : Toolset | undefined {

@@ -10,7 +10,7 @@ app.use(express.json());
 const db = new PolisDB(process.env.POLIS_DB || 'polis.sqlite3');
 const polis = new Polis(db);
 
-type RoomEvent = { timestamp: number; type: 'chat' | 'item' | 'interact' | 'join' | 'createRoom'; text: string; agentId: string };
+type RoomEvent = { timestamp: number; type: 'chat' | 'item' | 'interact' | 'join' | 'leave' | 'createRoom'; text: string; agentId: string };
 type RoomSnapshot = { name: string; isPrivate?: boolean; participants: { agentId: string; handle?: string }[]; items: { name: string; ownerId: string }[]; events: RoomEvent[] };
 
 function buildRoomSnapshotsFromDB(limitPasses: number = 400): RoomSnapshot[] {
@@ -39,6 +39,7 @@ function buildRoomSnapshotsFromDB(limitPasses: number = 400): RoomSnapshot[] {
       const joined = right.match(/^Joined room (.+)$/);
       const accepted = right.match(/^Accepted invite and joined (.+)$/);
       const returned = right.match(/^Returned to directory$/);
+      const left = right.match(/^Left room (.+)$/);
       const created = right.match(/^Created room (.+) \((private|public)\)$/);
       if (joined) {
         agentRoom[p.agentId] = joined[1];
@@ -48,6 +49,10 @@ function buildRoomSnapshotsFromDB(limitPasses: number = 400): RoomSnapshot[] {
         getRoom(accepted[1]).events.push({ timestamp: ts, type: 'join', text: `${p.agentId} accepted invite`, agentId: p.agentId });
       } else if (returned) {
         agentRoom[p.agentId] = undefined;
+      } else if (left) {
+        // Clear current room association on explicit leave
+        agentRoom[p.agentId] = undefined;
+        getRoom(left[1]).events.push({ timestamp: ts, type: 'leave', text: `${p.agentId} left`, agentId: p.agentId });
       } else if (created) {
         const r = getRoom(created[1]);
         r.isPrivate = created[2] === 'private';
@@ -177,6 +182,8 @@ const APP_JS = `
   function renderPass(p){
     var tools = ''; try { tools = JSON.parse(p.toolCallsJson).map(function(t){return t.name;}).join(', ');} catch(e){}
     var execs = ''; try { execs = JSON.parse(p.executionsJson).join('\n    ');} catch(e){}
+    var mb = '';
+    try { if (p.messageBufferJson) { mb = JSON.stringify(JSON.parse(p.messageBufferJson), null, 2); } } catch(e){}
     var div = document.createElement('div');
     div.className = 'card';
     div.style.marginBottom = '10px';
@@ -184,7 +191,8 @@ const APP_JS = `
       + '<div>Intent: ' + esc(p.intent) + '</div>'
       + '<div class="muted">Thoughts: ' + esc(p.agentThoughts) + '</div>'
       + '<div>Tools: ' + esc(tools || '(none)') + '</div>'
-      + '<details><summary>Executions</summary><pre>' + esc(execs) + '</pre></details>';
+      + '<details><summary>Executions</summary><pre>' + esc(execs) + '</pre></details>'
+      + (mb ? ('<details><summary>Message buffer</summary><pre>' + esc(mb) + '</pre></details>') : '');
     return div;
   }
   function renderDashboard(){
@@ -467,7 +475,15 @@ app.get('/api/passes', (req: Request, res: Response) => {
 });
 
 app.get('/api/rooms', (_req: Request, res: Response) => {
-  res.json(polis.listRooms());
+  try {
+    const mem = polis.listRooms();
+    const persisted = db.listPersistedRooms().map((r: any) => r.name);
+    const chat = db.listChatRooms().map((r: any) => r.room);
+    const merged = Array.from(new Set([...(mem||[]), ...(persisted||[]), ...(chat||[])])).filter(Boolean);
+    res.json(merged);
+  } catch {
+    res.json(polis.listRooms());
+  }
 });
 
 app.get('/api/agents', (_req: Request, res: Response) => {
@@ -536,12 +552,15 @@ app.get('/', (req: Request, res: Response) => {
     try { tools = JSON.parse(p.toolCallsJson).map((t: any) => t.name).join(', '); } catch {}
     let execs = '';
     try { execs = JSON.parse(p.executionsJson).join('\n    '); } catch {}
+    let mb = '';
+    try { if (p.messageBufferJson) { mb = JSON.stringify(JSON.parse(p.messageBufferJson), null, 2); } } catch {}
     return `<div style="border-bottom:1px solid #eee; padding:8px 0;">
       <div><strong>${new Date(p.timestamp).toLocaleTimeString()}</strong> — <code>${esc(p.agentId)}</code></div>
       <div>Intent: ${esc(p.intent)}</div>
       <div class="muted">Thoughts: ${esc(p.agentThoughts)}</div>
       <div>Tools: ${esc(tools || '(none)')}</div>
       <details><summary>Executions</summary><pre>${esc(execs)}</pre></details>
+      ${mb ? `<details><summary>Message buffer</summary><pre>${esc(mb)}</pre></details>` : ''}
     </div>`;
   };
 

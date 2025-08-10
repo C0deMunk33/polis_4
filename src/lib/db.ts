@@ -11,6 +11,7 @@ export interface AgentPassRecord {
   preResults: string;
   menuSnapshot: string;
   executionsJson: string;
+  messageBufferJson?: string;
 }
 
 export class PolisDB {
@@ -34,6 +35,9 @@ export class PolisDB {
       menuSnapshot TEXT,
       executionsJson TEXT
     )`).run();
+
+    // Migrations: add messageBufferJson if missing
+    try { this.db.prepare(`ALTER TABLE agent_passes ADD COLUMN messageBufferJson TEXT`).run(); } catch {}
 
     // Persisted chat messages per room
     this.db.prepare(`CREATE TABLE IF NOT EXISTS chat_messages (
@@ -82,8 +86,8 @@ export class PolisDB {
 
   insertPass(rec: AgentPassRecord): number {
     const stmt = this.db.prepare(`INSERT INTO agent_passes 
-      (timestamp, agentId, intent, agentThoughts, toolCallsJson, followupInstructions, preResults, menuSnapshot, executionsJson)
-      VALUES (@timestamp, @agentId, @intent, @agentThoughts, @toolCallsJson, @followupInstructions, @preResults, @menuSnapshot, @executionsJson)`);
+      (timestamp, agentId, intent, agentThoughts, toolCallsJson, followupInstructions, preResults, menuSnapshot, executionsJson, messageBufferJson)
+      VALUES (@timestamp, @agentId, @intent, @agentThoughts, @toolCallsJson, @followupInstructions, @preResults, @menuSnapshot, @executionsJson, @messageBufferJson)`);
     const info = stmt.run(rec);
     return Number(info.lastInsertRowid);
   }
