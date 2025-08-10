@@ -174,6 +174,18 @@
     var limitEl = $('agentLimit'); var limit = Number(limitEl ? limitEl.value : 25);
     if (!selectedAgentId) { if ($('agentHistory')) $('agentHistory').textContent = 'Select an agent'; return; }
     if ($('agentTitle')) $('agentTitle').textContent = 'Agent — '+selectedAgentId;
+    // Persona from latest pass preResults 'self:' line
+    fetchJSON('/api/passes?agentId='+encodeURIComponent(selectedAgentId)+'&limit=1').then(function(latest){
+      var selfBlock = '';
+      try {
+        var pre = (latest && latest[0] && latest[0].preResults) || '';
+        var idx = pre.indexOf('- self:');
+        if (idx >= 0) {
+          selfBlock = pre.slice(idx + 7).trim();
+        }
+      } catch(e) {}
+      if ($('agentSelf')) $('agentSelf').textContent = selfBlock || '(no self data yet)';
+    }).catch(function(){ if ($('agentSelf')) $('agentSelf').textContent = '(no self data yet)'; });
     fetchJSON('/api/passes?agentId='+encodeURIComponent(selectedAgentId)+'&limit='+encodeURIComponent(limit)).then(function(list){
       if ($('agentHistory')) $('agentHistory').innerHTML = (list||[]).map(function(p){ var n = renderPass(p); return n.outerHTML; }).join('') || '<em class="muted">No passes yet</em>';
     }).catch(function(e){ if ($('agentHistory')) $('agentHistory').innerHTML = '<pre>'+esc(e)+'</pre>'; });

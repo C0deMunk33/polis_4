@@ -484,6 +484,7 @@ app.get('/', (req: Request, res: Response) => {
             <h3 id="agentTitle" style="margin:0;">Agent</h3>
             <label class="muted">Limit: <input id="agentLimit" type="number" value="25" min="1" max="200" /></label>
           </div>
+          <details open style="margin-top:8px;"><summary>Persona (getSelf)</summary><pre id="agentSelf" class="muted">Loading…</pre></details>
           <div id="agentHistory" style="margin-top:8px;">Select an agent</div>
         </div>
       </div>

@@ -16,7 +16,7 @@ export function createIdentityToolset(name: string = "Identity"): Toolset {
     },
     {
       name: "getSelf",
-      description: "Get the agent's self state",
+      description: "Get the agent's self state (includes handle and all self fields)",
       parameters: []
     },
     {
@@ -40,8 +40,12 @@ export function createIdentityToolset(name: string = "Identity"): Toolset {
         const out = agent.setHandle?.(handle);
         return String(out ?? `Handle set to ${handle}`);
       }
-      case "getSelf":
-        return JSON.stringify(agent.getSelf?.() ?? {}, null, 2);
+      case "getSelf": {
+        const self = agent.getSelf?.() ?? {};
+        const handle = agent.getHandle?.();
+        const enriched = { handle: handle ?? "(unset)", ...self };
+        return JSON.stringify(enriched, null, 2);
+      }
       case "setSelfField": {
         const { key, value } = toolcall.parameters as any;
         if (!key) return "Error: key is required";

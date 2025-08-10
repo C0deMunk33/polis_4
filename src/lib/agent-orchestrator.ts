@@ -96,7 +96,40 @@ export class AgentOrchestrator {
     this.agents.set(agent.getId(), { agent, handle, menu, nextInstructions: initialInstructions || defaultGoal });
     // Persist initial goal in the agent's self state
     try { agent.setSelfField('goal', 'live and interact'); } catch {}
+    // Seed interests/persona
+    try {
+      const interests = this.pickRandomInterests(3);
+      agent.setSelfField('interests', interests.join(', '));
+    } catch {}
     // No global chat; agents will enter room-local chat when they join a room
+  }
+
+  private pickRandomInterests(count: number): string[] {
+    const pool = [
+      'gardening', 'classical music', 'hip-hop production', 'bird watching', 'rock climbing', 'baking sourdough', 'urban planning',
+      'quantum computing', 'vintage cars', 'calligraphy', 'origami', 'street photography', 'foraging', 'astronomy', 'astrophotography',
+      'ceramics', 'woodworking', 'trail running', 'open-source software', 'digital privacy', 'climate activism', 'cryptography',
+      'ancient history', 'mycology', 'jazz improvisation', 'poetry slam', 'stand-up comedy', 'chess', 'go (board game)', 'tabletop RPGs',
+      'biotech', 'marine biology', 'permaculture', 'sailing', 'surfing', 'snowboarding', 'beekeeping', 'wine tasting', 'coffee roasting',
+      'mixology', 'fashion design', 'tattoo art', 'film editing', 'screenwriting', 'game design', 'machine learning', 'robotics',
+      'arduino tinkering', '3D printing', 'architecture', 'interior design', 'philosophy', 'ethics', 'meditation', 'mindfulness',
+      'yoga', 'powerlifting', 'nutrition science', 'psychology', 'behavioral economics', 'investing', 'real estate', 'cartography',
+      'linguistics', 'sign language', 'spanish language', 'japanese language', 'cooking Indian cuisine', 'korean barbecue',
+      'vegan cooking', 'street food', 'travel hacking', 'mountaineering', 'scuba diving', 'salsa dancing', 'ballet', 'theatre acting',
+      'opera', 'painting', 'watercolor', 'graphic design', 'UI/UX', 'product management', 'entrepreneurship', 'mentorship',
+      'community organizing', 'volunteering', 'education reform', 'space exploration', 'astrology (cultural studies)', 'mythology',
+      'paleontology', 'archaeology', 'cryptozoology (fun)', 'board game design', 'speedrunning', 'esports', 'VR development',
+      'AR art installations', 'sound design', 'podcasting', 'documentary filmmaking'
+    ];
+    const picks: string[] = [];
+    const used = new Set<number>();
+    while (picks.length < Math.min(count, pool.length)) {
+      const idx = Math.floor(Math.random() * pool.length);
+      if (used.has(idx)) continue;
+      used.add(idx);
+      picks.push(pool[idx]);
+    }
+    return picks;
   }
 
   removeAgent(agentId: string) { const reg = this.agents.get(agentId); if (!reg) return; try { reg.menu.callTool(reg.agent, { name: "leave", parameters: {} }); } catch {} this.agents.delete(agentId); }
@@ -104,6 +137,7 @@ export class AgentOrchestrator {
   private computePreResults(reg: RegisteredAgent): string {
     const outputs: string[] = [];
     const currentMenu = reg.agent.getMenuInstance();
+    try { const selfStr = currentMenu.callTool(reg.agent, { name: 'getSelf', parameters: {} }); if (selfStr && !selfStr.startsWith('Unknown tool')) outputs.push(`- self: ${selfStr}`); } catch {}
     try { const rooms = currentMenu.callTool(reg.agent, { name: 'listRooms', parameters: {} }); if (rooms && !rooms.startsWith('Unknown tool')) outputs.push(`- rooms: \n${rooms}`); } catch {}
     try { const recent = currentMenu.callTool(reg.agent, { name: 'recentActivity', parameters: { limit: 5 } as any }); if (recent && !recent.startsWith("Unknown tool")) outputs.push(`- recentActivity: \n${recent}`); } catch {}
     try { const who = currentMenu.callTool(reg.agent, { name: 'who', parameters: {} }); if (who && who.trim().length > 0 && !who.startsWith('Unknown tool')) outputs.push(`- who: ${who}`); } catch {}
