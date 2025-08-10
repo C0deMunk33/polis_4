@@ -45,12 +45,7 @@ export class Agent {
 
     setHandle(newHandle: string): string {
         this.handleValue = newHandle;
-        try {
-            const result = this.menu.callTool(this, { name: 'enter', parameters: { handle: newHandle } });
-            return result;
-        } catch {
-            return `Handle set locally to ${newHandle}`;
-        }
+        return `Handle set locally to ${newHandle}`;
     }
 
     getSelf(): Record<string, string> {

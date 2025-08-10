@@ -42,7 +42,7 @@ export function createChatToolset(
       parameters: [
         {
           name: "handle",
-          description: "Handle to use in chat",
+          description: "Handle to use in chat, pick something that matches your personality",
           type: "string",
           enum: [],
           default: ""
@@ -53,6 +53,19 @@ export function createChatToolset(
       name: "leave",
       description: "Leave the chat",
       parameters: []
+    },
+    {
+      name: "changeHandle",
+      description: "Change your chat handle in this room (must have entered)",
+      parameters: [
+        {
+          name: "handle",
+          description: "New handle to use in this room chat",
+          type: "string",
+          enum: [],
+          default: ""
+        }
+      ]
     },
     {
       name: "who",
@@ -126,6 +139,23 @@ export function createChatToolset(
           participants.delete(callerId);
           return `Agent ${info.handle} (#${callerId}) left chat`;
         }
+        case "changeHandle": {
+          const { handle } = toolcall.parameters as Record<string, string>;
+          const callerId = normalize(inferAgentId());
+          if (!callerId) {
+            return "Error: agent is required";
+          }
+          const info = participants.get(callerId);
+          if (!info) {
+            return `Error: Agent #${callerId} must enter before changing handle`;
+          }
+          if (!handle || typeof handle !== "string") {
+            return "Error: 'handle' must be a non-empty string";
+          }
+          participants.set(callerId, { handle: String(handle), joinedAt: info.joinedAt });
+          try { agent?.setHandle?.(String(handle)); } catch {}
+          return `Handle changed to ${handle}`;
+        }
         case "who": {
           if (participants.size === 0) {
             return "No agents in chat";
@@ -169,7 +199,8 @@ export function createChatToolset(
             return `Error: Agent #${callerId} must enter before reading`;
           }
           const limit = (toolcall.parameters as Record<string, any>).limit;
-          const max = Number.isFinite(Number(limit)) ? Math.max(0, Number(limit)) : 10;
+          // Apply a hard cap of 20 messages to avoid flooding the agent
+          const max = Math.min(20, (Number.isFinite(Number(limit)) ? Math.max(0, Number(limit)) : 10));
           const slice = messages.slice(-max);
           if (slice.length === 0) {
             return "No messages";

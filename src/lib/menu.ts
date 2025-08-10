@@ -19,7 +19,10 @@ export class Menu {
             // show list of tools and toolList function
             resultString += `\nTool Menu (${this.currentToolset}):\n`;
             for (const tool of this.toolsets.find((toolset) => toolset.name === this.currentToolset)?.getTools() ?? []) {
-                resultString += `\t${tool.name} (${tool.parameters.map((param) => param.name).join(", ") }): ${tool.description}\n`;
+                const paramsSpec = tool.parameters
+                    .map((param) => `${param.name}:${param.type}${param.default !== undefined && String(param.default).length ? `=${param.default}` : ''} – ${param.description}`)
+                    .join("; ");
+                resultString += `\t${tool.name} (${paramsSpec}): ${tool.description}\n`;
             }
             resultString += "To return to the toolset menu, use toolList()\n";
         } else {

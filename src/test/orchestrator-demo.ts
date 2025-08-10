@@ -10,8 +10,6 @@ async function runOrchestratorDemo() {
   const orchestrator = new AgentOrchestrator(
     [createIdentityToolset(), calculatorToolset, stringToolset, utilityToolset],
     {
-      includeChat: true,
-      chatToolsetName: "Agora",
       loopIntervalMs: 1500,
       onLog: (m) => console.log(m),
       onPassComplete: ({ agentId, intent, followup, toolCalls, executions }) => {
@@ -30,19 +28,19 @@ async function runOrchestratorDemo() {
   orchestrator.createAndAddAgent({
     id: "agent-alpha",
     handle: "Alpha",
-    initialInstructions: "Introduce yourself in chat using the Agora tool, then propose a simple computational task to others.",
+    initialInstructions: "Join a room and introduce yourself in the room chat, then propose a simple computational task to others.",
   });
 
   orchestrator.createAndAddAgent({
     id: "agent-beta",
     handle: "Beta",
-    initialInstructions: "Greet others in chat and ask what task they are working on. Consider formatting the date to schedule a meeting.",
+    initialInstructions: "Greet others in the room chat and ask what task they are working on. Consider formatting the date to schedule a meeting.",
   });
 
   orchestrator.createAndAddAgent({
     id: "agent-gamma",
     handle: "Gamma",
-    initialInstructions: "Say hello in chat, then choose a tool to demonstrate (e.g., add or reverse) and share the result in chat.",
+    initialInstructions: "Say hello in the room chat, then choose a tool to demonstrate (e.g., add or reverse) and share the result in chat.",
   });
 
   orchestrator.start();

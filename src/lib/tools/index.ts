@@ -4,7 +4,9 @@ import * as fs from 'fs';
 
 export function loadAllToolsets(): Toolset[] {
   const dir = path.join(__dirname);
-  const files = fs.readdirSync(dir).filter(f => f.endsWith('.js') && f !== 'index.js');
+  const files = fs
+    .readdirSync(dir)
+    .filter(f => f.endsWith('.js') && f !== 'index.js' && f !== 'chat.js');
   const toolsets: Toolset[] = [];
   for (const file of files) {
     try {

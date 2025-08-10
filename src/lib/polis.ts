@@ -80,7 +80,8 @@ export class Room {
           const limit = Number((toolcall.parameters as any).limit ?? 5);
           let chat = "";
           try {
-            chat = this.chat.callTool(agent, { name: 'read', parameters: { limit } });
+            // Use DB-backed recent chat so admin (web) messages are included and apply a hard cap of 20
+            chat = this.polis.getRecentChatText(this.name, Math.min(20, limit));
           } catch { chat = "(chat unavailable)"; }
           const itemsList = this.items.length === 0 ? "No items" : this.items.map((ri, idx) => `[${idx}] ${ri.item.template.name} (owner:#${ri.ownerId})`).join("\n");
           return `Room: ${this.name}\nItems:\n${itemsList}\n\nRecent Chat:\n${chat}`;
@@ -196,6 +197,23 @@ export class Polis {
     } catch {}
   }
 
+  // Read recent chat for a room from DB (admin and agents included)
+  getRecentChatText(room: string, limit: number = 20): string {
+    try {
+      const max = Math.min(20, Math.max(0, Number(limit) || 0));
+      const rows = this.db?.listRecentChatByRoom(room, max) ?? [];
+      if (!rows.length) return "No messages";
+      return rows
+        .map(m => {
+          const ts = new Date(m.timestamp).toISOString();
+          return `[${ts}] ${m.handle} (#${m.agentId}): ${m.content}`;
+        })
+        .join("\n");
+    } catch {
+      return "(chat unavailable)";
+    }
+  }
+
   listRooms(): string[] { return Array.from(this.rooms.keys()); }
 
   listRoomSnapshots(limitMessages: number = 8) {
@@ -257,8 +275,6 @@ export class Polis {
             return `Error: room ${room.name} is private; invite required`;
           }
           agent.setMenu(room.menu);
-          const handle = agent.getHandle?.() ?? agent.getId();
-          try { room.chat.callTool(agent, { name: 'enter', parameters: { handle } }); } catch {}
           return `Joined room ${room.name}`;
         }
         case "acceptInvite": {
@@ -267,8 +283,6 @@ export class Polis {
           if (!room) return `Error: room ${name} not found`;
           if (!room.invites.has(agent.getId())) return `Error: no invite for you in ${room.name}`;
           agent.setMenu(room.menu);
-          const handle = agent.getHandle?.() ?? agent.getId();
-          try { room.chat.callTool(agent, { name: 'enter', parameters: { handle } }); } catch {}
           return `Accepted invite and joined ${room.name}`;
         }
         default:

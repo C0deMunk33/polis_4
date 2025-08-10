@@ -9,7 +9,7 @@ export function createIdentityToolset(name: string = "Identity"): Toolset {
     },
     {
       name: "setHandle",
-      description: "Set a new handle (also updates chat presence if available)",
+      description: "Set a new handle for yourself (does not auto-enter chat)",
       parameters: [
         { name: "handle", description: "New handle", type: "string", enum: [], default: "" }
       ]
