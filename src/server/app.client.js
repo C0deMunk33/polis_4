@@ -138,7 +138,41 @@
     // Update snapshots and incremental chat
     fetchJSON('/api/room-snapshots').then(function(snaps){
       var names = {};
-      (snaps||[]).forEach(function(s){ names[s.name]=true; if (!roomState[s.name]) roomState[s.name] = { lastChatTs: 0 }; updateRoomCard(s); });
+      if ((snaps||[]).length > 0) {
+        Array.from(grid.querySelectorAll('em')).forEach(function(el){
+          try { if (el.parentNode === grid) grid.removeChild(el); } catch(e){}
+        });
+      }
+      (snaps||[]).forEach(function(s){
+        names[s.name]=true;
+        if (!roomState[s.name]) roomState[s.name] = { lastChatTs: 0 };
+        var existing = $('room-'+s.name);
+        if (!existing) {
+          var card = document.createElement('div');
+          card.className = 'card';
+          card.id = 'room-'+s.name;
+          card.setAttribute('data-room', s.name);
+          card.innerHTML = ''
+            + '<h3>'+esc(s.name)+' '+(s.isPrivate?'(private)':'(public)')+'</h3>'
+            + '<div class="muted participants">Participants (0): —</div>'
+            + '<div>Items: <span class="items">—</span></div>'
+            + '<details class="activity" style="margin-top:8px" open><summary>Recent activity</summary><pre>Loading…</pre></details>'
+            + '<details style="margin-top:8px" open id="chat-'+esc(s.name)+'"><summary>Recent chat</summary><pre>Loading…</pre></details>'
+            + '<form data-room="'+esc(s.name)+'" class="room-form" style="margin-top:8px; display:flex; gap:8px; align-items:center;">'
+            + '  <input type="text" name="handle" value="Admin" placeholder="Admin handle" />'
+            + '  <input type="text" name="content" placeholder="Say something…" style="flex:1;" />'
+            + '  <button class="primary" type="submit">Send</button>'
+            + '</form>';
+          grid.appendChild(card);
+          wireRoomForm(card);
+          // Initial chat load for the new room
+          fetchJSON('/api/room-chat?room='+encodeURIComponent(s.name)).then(function(msgs){
+            var chatEl = $('chat-'+s.name); var pre = chatEl ? chatEl.querySelector('pre') : null;
+            if (pre) pre.textContent = (msgs||[]).map(function(m){ roomState[s.name].lastChatTs = Math.max(roomState[s.name].lastChatTs, Number(m.timestamp)||0); return '['+new Date(m.timestamp).toLocaleTimeString()+'] '+m.handle+' (#'+m.agentId+'): '+m.content; }).join('\n') || 'No messages';
+          });
+        }
+        updateRoomCard(s);
+      });
       // Remove cards for rooms that no longer exist
       Array.from(grid.children).forEach(function(el){ var name = el.getAttribute && el.getAttribute('data-room'); if (name && !names[name]) grid.removeChild(el); });
       // Chat since for each room
@@ -270,9 +304,14 @@
   // Periodic updates without nuking DOM
   setInterval(function(){
     var activeBtn = document.querySelector('nav button.active'); var current = activeBtn && activeBtn.dataset ? activeBtn.dataset.tab : null;
-    if(current==='dashboard') renderDashboard();
+    if(current==='dashboard') {
+      var auto = document.getElementById('autorefresh');
+      if (!auto || (auto && auto.checked)) { renderDashboard(); }
+    }
     if(current==='rooms') tickRooms();
     if(current==='agents') renderAgents();
     if(current==='items') renderItems();
   }, 3000);
+  var refreshBtn = document.getElementById('refresh');
+  if (refreshBtn) refreshBtn.addEventListener('click', function(){ renderDashboard(); });
 })();
