@@ -121,9 +121,15 @@ export function createChatToolset(
           if (!agentId || !handle) {
             return "Error: agent is required and 'handle' is required";
           }
+          // Enforce unique handles per room (excluding the caller's existing identity)
+          const desiredHandle = String(handle);
+          const taken = Array.from(participants.entries()).some(([id, info]) => id !== agentId && info.handle === desiredHandle);
+          if (taken) {
+            return "Error: this handle already exists, please chose another one";
+          }
           const now = Date.now();
           const existed = participants.has(agentId);
-          participants.set(agentId, { handle: String(handle), joinedAt: existed ? (participants.get(agentId)!.joinedAt) : now });
+          participants.set(agentId, { handle: desiredHandle, joinedAt: existed ? (participants.get(agentId)!.joinedAt) : now });
           const action = existed ? "updated handle in" : "entered";
           return `Agent ${handle} (#${agentId}) ${action} chat`;
         }
@@ -152,7 +158,13 @@ export function createChatToolset(
           if (!handle || typeof handle !== "string") {
             return "Error: 'handle' must be a non-empty string";
           }
-          participants.set(callerId, { handle: String(handle), joinedAt: info.joinedAt });
+          // Enforce unique handles per room (excluding the caller)
+          const desiredHandle = String(handle);
+          const taken = Array.from(participants.entries()).some(([id, p]) => id !== callerId && p.handle === desiredHandle);
+          if (taken) {
+            return "Error: this handle already exists, please chose another one";
+          }
+          participants.set(callerId, { handle: desiredHandle, joinedAt: info.joinedAt });
           try { agent?.setHandle?.(String(handle)); } catch {}
           return `Handle changed to ${handle}`;
         }
