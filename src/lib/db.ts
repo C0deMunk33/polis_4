@@ -45,6 +45,31 @@ export class PolisDB {
       content TEXT
     )`).run();
     this.db.prepare(`CREATE INDEX IF NOT EXISTS chat_messages_room_idx ON chat_messages(room, timestamp DESC)`).run();
+
+    // Items and interactions
+    this.db.prepare(`CREATE TABLE IF NOT EXISTS items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      createdTs INTEGER,
+      room TEXT,
+      ownerId TEXT,
+      templateJson TEXT,
+      stateJson TEXT
+    )`).run();
+    this.db.prepare(`CREATE INDEX IF NOT EXISTS items_room_idx ON items(room, createdTs DESC)`).run();
+
+    this.db.prepare(`CREATE TABLE IF NOT EXISTS item_interactions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      timestamp INTEGER,
+      itemId INTEGER,
+      room TEXT,
+      agentId TEXT,
+      interactionName TEXT,
+      inputsJson TEXT,
+      outputsJson TEXT,
+      description TEXT,
+      updatedStateJson TEXT
+    )`).run();
+    this.db.prepare(`CREATE INDEX IF NOT EXISTS item_interactions_item_idx ON item_interactions(itemId, timestamp DESC)`).run();
   }
 
   insertPass(rec: AgentPassRecord): number {
@@ -111,6 +136,79 @@ export class PolisDB {
 
   listChatRooms(): { room: string; lastTimestamp: number }[] {
     const rows = this.db.prepare(`SELECT room, MAX(timestamp) as lastTimestamp FROM chat_messages GROUP BY room ORDER BY lastTimestamp DESC`).all();
+    return rows as any[];
+  }
+
+  // Items API
+  insertItem(rec: { createdTs: number; room: string; ownerId: string; templateJson: string; stateJson: string }): number {
+    const stmt = this.db.prepare(`INSERT INTO items (createdTs, room, ownerId, templateJson, stateJson)
+      VALUES (@createdTs, @room, @ownerId, @templateJson, @stateJson)`);
+    const info = stmt.run(rec);
+    return Number(info.lastInsertRowid);
+  }
+
+  updateItemState(itemId: number, stateJson: string): void {
+    this.db.prepare(`UPDATE items SET stateJson = ? WHERE id = ?`).run(stateJson, itemId);
+  }
+
+  deleteItem(itemId: number): void {
+    this.db.prepare(`DELETE FROM item_interactions WHERE itemId = ?`).run(itemId);
+    this.db.prepare(`DELETE FROM items WHERE id = ?`).run(itemId);
+  }
+
+  getItem(itemId: number): { id: number; createdTs: number; room: string; ownerId: string; templateJson: string; stateJson: string } | null {
+    const row = this.db.prepare(`SELECT * FROM items WHERE id = ?`).get(itemId);
+    return (row as any) || null;
+  }
+
+  listItems(): { id: number; createdTs: number; room: string; ownerId: string; templateJson: string; stateJson: string }[] {
+    const rows = this.db.prepare(`SELECT * FROM items ORDER BY createdTs DESC, id DESC`).all();
+    return rows as any[];
+  }
+
+  listItemsSummary(): { itemId: number; createdTs: number; room: string; ownerId: string; templateJson: string; stateJson: string; lastTimestamp: number | null }[] {
+    const rows = this.db.prepare(`
+      SELECT i.id as itemId, i.createdTs, i.room, i.ownerId, i.templateJson, i.stateJson,
+             MAX(ii.timestamp) as lastTimestamp
+      FROM items i
+      LEFT JOIN item_interactions ii ON ii.itemId = i.id
+      GROUP BY i.id
+      ORDER BY COALESCE(MAX(ii.timestamp), i.createdTs) DESC
+    `).all();
+    return rows as any[];
+  }
+
+  insertItemInteraction(rec: {
+    timestamp: number;
+    itemId: number;
+    room: string;
+    agentId: string;
+    interactionName: string;
+    inputsJson: string;
+    outputsJson: string;
+    description: string;
+    updatedStateJson: string;
+  }): number {
+    const stmt = this.db.prepare(`INSERT INTO item_interactions
+      (timestamp, itemId, room, agentId, interactionName, inputsJson, outputsJson, description, updatedStateJson)
+      VALUES (@timestamp, @itemId, @room, @agentId, @interactionName, @inputsJson, @outputsJson, @description, @updatedStateJson)`);
+    const info = stmt.run(rec);
+    return Number(info.lastInsertRowid);
+  }
+
+  listRecentItemInteractions(itemId: number, limit: number = 50): {
+    id: number;
+    timestamp: number;
+    itemId: number;
+    room: string;
+    agentId: string;
+    interactionName: string;
+    inputsJson: string;
+    outputsJson: string;
+    description: string;
+    updatedStateJson: string;
+  }[] {
+    const rows = this.db.prepare(`SELECT * FROM item_interactions WHERE itemId = ? ORDER BY timestamp DESC, id DESC LIMIT ?`).all(itemId, limit);
     return rows as any[];
   }
 }

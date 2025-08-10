@@ -2,7 +2,7 @@ import { Menu } from "./menu";
 import { Toolset, ToolCall, ToolSchema } from "./toolset";
 import { createChatToolset } from "./tools/chat";
 import { Agent } from "./agent";
-import { ItemsHelpers, Item } from "./items";
+import { ItemsHelpers, Item, ItemInteraction, ItemInteractionRequest } from "./items";
 import { PolisDB } from "./db";
 
 interface RoomItem {
@@ -138,6 +138,7 @@ export class Room {
             const template = await ItemsHelpers.createTemplate(String(description));
             const newItem = await Item.create(template, String(creationPrompt ?? ""));
             this.items.push({ ownerId, item: newItem });
+            try { this.polis.onItemCreated?.(this.name, ownerId, newItem); } catch {}
             return `Created item '${newItem.template.name}' (owner:#${ownerId})`;
           }
           case "interact": {
@@ -147,7 +148,9 @@ export class Room {
             if (!entry) return `Error: item ${idx} not found`;
             let parsedInputs: Record<string, string> = {};
             try { parsedInputs = inputs ? JSON.parse(inputs) : {}; } catch { return "Error: invalid JSON for inputs"; }
-            await entry.item.interact({ interaction, inputs: parsedInputs, intent: `Agent ${agent.getHandle?.() ?? agent.getId()} interacts` });
+            const req: ItemInteractionRequest = { interaction, inputs: parsedInputs, intent: `Agent ${agent.getHandle?.() ?? agent.getId()} interacts` };
+            const resp: ItemInteraction = await entry.item.interact(req);
+            try { this.polis.onItemInteraction?.(this.name, agent.getId(), entry.item, req, resp); } catch {}
             return `Interaction '${interaction}' completed on ${entry.item.template.name}`;
           }
           case "removeItem": {
@@ -156,6 +159,7 @@ export class Room {
             if (!entry) return `Error: item ${idx} not found`;
             if (entry.ownerId !== agent.getId()) return "Error: only the owner can remove this item";
             this.items.splice(idx, 1);
+            try { this.polis.onItemRemoved?.(this.name, agent.getId(), entry.item); } catch {}
             return `Removed item ${idx}`;
           }
         }
@@ -174,6 +178,7 @@ export class Polis {
   private directoryToolset: Toolset;
   private directoryMenu: Menu;
   private db?: PolisDB;
+  private itemIds = new WeakMap<Item, number>();
 
   constructor(db?: PolisDB) {
     this.db = db;
@@ -215,6 +220,58 @@ export class Polis {
     } catch {
       return "(chat unavailable)";
     }
+  }
+
+  // Items persistence hooks
+  onItemCreated(room: string, ownerId: string, item: Item): void {
+    try {
+      const id = this.db?.insertItem({
+        createdTs: Date.now(),
+        room,
+        ownerId,
+        templateJson: JSON.stringify(item.template),
+        stateJson: JSON.stringify(item.instance?.item_state || {})
+      });
+      if (id) this.itemIds.set(item, id);
+    } catch {}
+  }
+
+  onItemInteraction(room: string, agentId: string, item: Item, req: ItemInteractionRequest, resp: ItemInteraction): void {
+    try {
+      let id = this.itemIds.get(item);
+      if (!id) {
+        id = this.db?.insertItem({
+          createdTs: Date.now(),
+          room,
+          ownerId: agentId,
+          templateJson: JSON.stringify(item.template),
+          stateJson: JSON.stringify(item.instance?.item_state || {})
+        });
+        if (id) this.itemIds.set(item, id);
+      }
+      if (!id) return;
+      // Update item state
+      this.db?.updateItemState(id, JSON.stringify(item.instance?.item_state || {}));
+      // Record interaction
+      this.db?.insertItemInteraction({
+        timestamp: Date.now(),
+        itemId: id,
+        room,
+        agentId,
+        interactionName: req.interaction,
+        inputsJson: JSON.stringify(req.inputs || {}),
+        outputsJson: JSON.stringify(resp.outputs || []),
+        description: String(resp.description || ''),
+        updatedStateJson: JSON.stringify(resp.updated_item_state || {})
+      });
+    } catch {}
+  }
+
+  onItemRemoved(room: string, agentId: string, item: Item): void {
+    try {
+      const id = this.itemIds.get(item);
+      if (id) this.db?.deleteItem(id);
+    } catch {}
   }
 
   listRooms(): string[] { return Array.from(this.rooms.keys()); }

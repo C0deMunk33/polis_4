@@ -4,12 +4,13 @@
   function fetchJSON(path){ return fetch(path).then(function(r){ if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); }); }
 
   // Tabs
-  var tabs = ['dashboard','rooms','agents'];
+  var tabs = ['dashboard','rooms','agents','items'];
   function showTab(name){
     tabs.forEach(function(t){ var btn=$('tabbtn-'+t), el=$('tab-'+t); if(btn) btn.classList.toggle('active', t===name); if(el) el.style.display = (t===name?'block':'none'); });
     if (name==='dashboard') renderDashboard();
     if (name==='rooms') ensureRoomsInitialized();
     if (name==='agents') renderAgents();
+    if (name==='items') renderItems();
     history.replaceState(null,'','#'+name);
   }
 
@@ -191,6 +192,53 @@
     }).catch(function(e){ if ($('agentHistory')) $('agentHistory').innerHTML = '<pre>'+esc(e)+'</pre>'; });
   }
 
+  // Items
+  var selectedItemId = 0;
+  function renderItems(){
+    Promise.all([fetchJSON('/api/items'), selectedItemId ? fetchJSON('/api/item-interactions?itemId='+encodeURIComponent(selectedItemId)+'&limit=50') : Promise.resolve([])])
+      .then(function(res){
+        var list = res[0]||[]; var interactions = res[1]||[];
+        if ($('itemsPane')) {
+          $('itemsPane').innerHTML = '<ul style="list-style:none; padding-left:0; margin:0;">' + (list.map(function(it){
+            var last = it.lastTimestamp ? new Date(it.lastTimestamp).toLocaleTimeString() : '—';
+            var active = it.itemId===selectedItemId ? ' active' : '';
+            var label = (JSON.parse(it.templateJson||'{}').name) || ('Item #' + it.itemId);
+            return '<li style="margin:6px 0;"><button type="button" class="agent-link'+active+'" data-id="'+esc(it.itemId)+'">'+esc(label)+'</button> <span class="muted" style="margin-left:6px;">'+last+'</span></li>';
+          }).join('')) + '</ul>';
+        }
+        if (!selectedItemId && list && list.length>0) { selectedItemId = list[0].itemId; }
+        wireItemClicks();
+        renderItemDetail(interactions);
+      });
+  }
+  function wireItemClicks(){
+    var pane = $('itemsPane'); if (!pane) return;
+    Array.from(pane.querySelectorAll('.agent-link')).forEach(function(btn){
+      btn.addEventListener('click', function(){ selectedItemId = Number(btn.getAttribute('data-id')||'0'); renderItems(); });
+    });
+  }
+  function renderItemDetail(interactions){
+    if (!selectedItemId) { if ($('itemHistory')) $('itemHistory').textContent = 'Select an item'; return; }
+    fetchJSON('/api/item?itemId='+encodeURIComponent(selectedItemId)).then(function(item){
+      var tmpl = item ? JSON.parse(item.templateJson||'{}') : {};
+      if ($('itemTitle')) $('itemTitle').textContent = 'Item — ' + (tmpl.name || ('#'+selectedItemId));
+      try {
+        var stateObj = item ? JSON.parse(item.stateJson||'{}') : {};
+        if ($('itemState')) $('itemState').textContent = JSON.stringify(stateObj, null, 2) || '{}';
+      } catch(e) { if ($('itemState')) $('itemState').textContent = '{}'; }
+      var historyHtml = (interactions||[]).map(function(p){
+        var pre = '';
+        try { pre = JSON.stringify(JSON.parse(p.outputsJson||'[]'), null, 2); } catch(e) {}
+        return '<div class="card" style="margin-bottom:10px;"><div><strong>' + new Date(p.timestamp).toLocaleTimeString() + '</strong> — <code>' + esc(p.interactionName) + '</code></div>'
+          + '<div>By: ' + esc(p.agentId) + ' in ' + esc(p.room) + '</div>'
+          + '<div class="muted">' + esc(p.description || '') + '</div>'
+          + '<details><summary>Outputs</summary><pre>' + esc(pre) + '</pre></details>'
+          + '</div>';
+      }).join('') || '<em class="muted">No interactions yet</em>';
+      if ($('itemHistory')) $('itemHistory').innerHTML = historyHtml;
+    }).catch(function(e){ if ($('itemHistory')) $('itemHistory').innerHTML = '<pre>'+esc(e)+'</pre>'; });
+  }
+
   // Events
   var btns = document.querySelectorAll('[data-tab]');
   btns.forEach(function(b){ b.addEventListener('click', function(){ showTab(b.getAttribute('data-tab')); }); });
@@ -203,5 +251,6 @@
     if(current==='dashboard') renderDashboard();
     if(current==='rooms') tickRooms();
     if(current==='agents') renderAgents();
+    if(current==='items') renderItems();
   }, 3000);
 })();

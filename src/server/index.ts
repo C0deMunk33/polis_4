@@ -141,12 +141,13 @@ const APP_JS = `
   function fetchJSON(path){ return fetch(path).then(function(r){ if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); }); }
 
   // Tabs
-  var tabs = ['dashboard','rooms','agents'];
+  var tabs = ['dashboard','rooms','agents','items'];
   function showTab(name){
     tabs.forEach(function(t){ var btn=$('tabbtn-'+t), el=$('tab-'+t); if(btn) btn.classList.toggle('active', t===name); if(el) el.style.display = (t===name?'block':'none'); });
     if (name==='dashboard') renderDashboard();
     if (name==='rooms') ensureRoomsInitialized();
     if (name==='agents') renderAgents();
+    if (name==='items') renderItems();
     history.replaceState(null,'','#'+name);
   }
 
@@ -316,6 +317,55 @@ const APP_JS = `
     }).catch(function(e){ if ($('agentHistory')) $('agentHistory').innerHTML = '<pre>'+esc(e)+'</pre>'; });
   }
 
+  // Items
+  var selectedItemId = 0;
+  function renderItems(){
+    Promise.all([fetchJSON('/api/items'), selectedItemId ? fetchJSON('/api/item-interactions?itemId='+encodeURIComponent(selectedItemId)+'&limit=50') : Promise.resolve([])])
+      .then(function(res){
+        var list = res[0]||[]; var interactions = res[1]||[];
+        // left pane
+        if ($('itemsPane')) {
+          $('itemsPane').innerHTML = '<ul style="list-style:none; padding-left:0; margin:0;">' + (list.map(function(it){
+            var last = it.lastTimestamp ? new Date(it.lastTimestamp).toLocaleTimeString() : '—';
+            var active = it.itemId===selectedItemId ? ' active' : '';
+            var label = (JSON.parse(it.templateJson||'{}').name) || ('Item #' + it.itemId);
+            return '<li style="margin:6px 0;"><button type="button" class="agent-link'+active+'" data-id="'+esc(it.itemId)+'">'+esc(label)+'</button> <span class="muted" style="margin-left:6px;">'+last+'</span></li>';
+          }).join('')) + '</ul>';
+        }
+        if (!selectedItemId && list && list.length>0) { selectedItemId = list[0].itemId; }
+        wireItemClicks();
+        renderItemDetail(interactions);
+      });
+  }
+  function wireItemClicks(){
+    var pane = $('itemsPane'); if (!pane) return;
+    Array.from(pane.querySelectorAll('.agent-link')).forEach(function(btn){
+      btn.addEventListener('click', function(){ selectedItemId = Number(btn.getAttribute('data-id')||'0'); renderItems(); });
+    });
+  }
+  function renderItemDetail(interactions){
+    if (!selectedItemId) { if ($('itemHistory')) $('itemHistory').textContent = 'Select an item'; return; }
+    fetchJSON('/api/item?itemId='+encodeURIComponent(selectedItemId)).then(function(item){
+      var tmpl = item ? JSON.parse(item.templateJson||'{}') : {};
+      if ($('itemTitle')) $('itemTitle').textContent = 'Item — ' + (tmpl.name || ('#'+selectedItemId));
+      // Render state
+      try {
+        var stateObj = item ? JSON.parse(item.stateJson||'{}') : {};
+        if ($('itemState')) $('itemState').textContent = JSON.stringify(stateObj, null, 2) || '{}';
+      } catch(e) { if ($('itemState')) $('itemState').textContent = '{}'; }
+      var historyHtml = (interactions||[]).map(function(p){
+        var pre = '';
+        try { pre = JSON.stringify(JSON.parse(p.outputsJson||'[]'), null, 2); } catch(e) {}
+        return '<div class="card" style="margin-bottom:10px;"><div><strong>' + new Date(p.timestamp).toLocaleTimeString() + '</strong> — <code>' + esc(p.interactionName) + '</code></div>'
+          + '<div>By: ' + esc(p.agentId) + ' in ' + esc(p.room) + '</div>'
+          + '<div class="muted">' + esc(p.description || '') + '</div>'
+          + '<details><summary>Outputs</summary><pre>' + esc(pre) + '</pre></details>'
+          + '</div>';
+      }).join('') || '<em class="muted">No interactions yet</em>';
+      if ($('itemHistory')) $('itemHistory').innerHTML = historyHtml;
+    }).catch(function(e){ if ($('itemHistory')) $('itemHistory').innerHTML = '<pre>'+esc(e)+'</pre>'; });
+  }
+
   // Events
   var btns = document.querySelectorAll('[data-tab]');
   btns.forEach(function(b){ b.addEventListener('click', function(){ showTab(b.getAttribute('data-tab')); }); });
@@ -328,6 +378,7 @@ const APP_JS = `
     if(current==='dashboard') renderDashboard();
     if(current==='rooms') tickRooms();
     if(current==='agents') renderAgents();
+    if(current==='items') renderItems();
   }, 3000);
 })();
 `;
@@ -406,6 +457,24 @@ app.get('/api/room-chat-since', (req: Request, res: Response) => {
   res.json(db.listChatByRoomSince(room, since, 200));
 });
 
+// Items API
+app.get('/api/items', (_req: Request, res: Response) => {
+  res.json(db.listItemsSummary());
+});
+
+app.get('/api/item', (req: Request, res: Response) => {
+  const itemId = Number(req.query.itemId || 0);
+  if (!itemId) return res.status(400).json({ error: 'itemId required' });
+  res.json(db.getItem(itemId));
+});
+
+app.get('/api/item-interactions', (req: Request, res: Response) => {
+  const itemId = Number(req.query.itemId || 0);
+  const limit = Number(req.query.limit || 50);
+  if (!itemId) return res.status(400).json({ error: 'itemId required' });
+  res.json(db.listRecentItemInteractions(itemId, limit));
+});
+
 app.get('/', (req: Request, res: Response) => {
   const limit = Number(req.query.limit || 50);
   const activeAgentId = String(req.query.agentId || '').trim();
@@ -447,6 +516,7 @@ app.get('/', (req: Request, res: Response) => {
       <button id="tabbtn-dashboard" data-tab="dashboard" class="active">Dashboard</button>
       <button id="tabbtn-rooms" data-tab="rooms">Rooms</button>
       <button id="tabbtn-agents" data-tab="agents">Agents</button>
+      <button id="tabbtn-items" data-tab="items">Items</button>
     </nav>
   </header>
   <main>
@@ -486,6 +556,22 @@ app.get('/', (req: Request, res: Response) => {
           </div>
           <details open style="margin-top:8px;"><summary>Persona (getSelf)</summary><pre id="agentSelf" class="muted">Loading…</pre></details>
           <div id="agentHistory" style="margin-top:8px;">Select an agent</div>
+        </div>
+      </div>
+    </section>
+
+    <section id="tab-items" style="display:none;">
+      <div class="row" style="gap:16px; align-items:flex-start;">
+        <div class="card" style="flex:1; min-width:260px;">
+          <h3>Items</h3>
+          <div id="itemsPane" class="muted">Loading…</div>
+        </div>
+        <div class="card" style="flex:2;">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <h3 id="itemTitle" style="margin:0;">Item</h3>
+          </div>
+          <details open style="margin-top:8px;"><summary>State</summary><pre id="itemState" class="muted">Select an item</pre></details>
+          <div id="itemHistory" style="margin-top:8px;">Select an item</div>
         </div>
       </div>
     </section>
