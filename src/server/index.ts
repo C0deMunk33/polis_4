@@ -112,6 +112,18 @@ function buildRoomSnapshotsFromDB(limitPasses: number = 400): RoomSnapshot[] {
     }
   } catch {}
 
+  // Also include explicitly persisted rooms
+  try {
+    const persisted = db.listPersistedRooms();
+    for (const r of persisted as any[]) {
+      if (!rooms[r.name]) {
+        rooms[r.name] = { name: r.name, isPrivate: !!r.isPrivate, participants: [], items: [], events: [] } as RoomSnapshot;
+      } else {
+        rooms[r.name].isPrivate = !!r.isPrivate;
+      }
+    }
+  } catch {}
+
   // Keep only latest few events per room
   for (const r of Object.values(rooms)) {
     r.events.sort((a, b) => b.timestamp - a.timestamp);
@@ -336,7 +348,7 @@ const APP_JS = `
   // Items
   var selectedItemId = 0;
   function renderItems(){
-    Promise.all([fetchJSON('/api/items'), selectedItemId ? fetchJSON('/api/item-interactions?itemId='+encodeURIComponent(selectedItemId)+'&limit=50') : Promise.resolve([])])
+    Promise.all([fetchJSON('/api/items'), selectedItemId ? fetchJSON('/api/item-interactions?itemId='+encodeURIComponent(selectedItemId)+'&limit=10') : Promise.resolve([])])
       .then(function(res){
         var list = res[0]||[]; var interactions = res[1]||[];
         // left pane
@@ -369,13 +381,29 @@ const APP_JS = `
         var stateObj = item ? JSON.parse(item.stateJson||'{}') : {};
         if ($('itemState')) $('itemState').textContent = JSON.stringify(stateObj, null, 2) || '{}';
       } catch(e) { if ($('itemState')) $('itemState').textContent = '{}'; }
-      var historyHtml = (interactions||[]).map(function(p){
-        var pre = '';
-        try { pre = JSON.stringify(JSON.parse(p.outputsJson||'[]'), null, 2); } catch(e) {}
+      // Render possible interactions from template
+      try {
+        var inters = (tmpl && Array.isArray(tmpl.interactions)) ? tmpl.interactions : [];
+        var lines = inters.map(function(iv){
+          var inputs = (iv.action_inputs||[]).map(function(inp){ return (inp.name_and_amount||'')+': '+(inp.type||''); }).join(', ');
+          var outputs = (iv.action_outputs||[]).map(function(out){ return (out.name_and_amount||'')+': '+(out.type||''); }).join(', ');
+          return '- ' + (iv.name||'') + ' — ' + (iv.description||'') + (inputs? '\n  inputs: '+inputs : '') + (outputs? '\n  outputs: '+outputs : '');
+        }).join('\n');
+        if ($('itemInteractions')) $('itemInteractions').textContent = lines || '(none)';
+      } catch(e) { if ($('itemInteractions')) $('itemInteractions').textContent = '(none)'; }
+      var historyHtml = (interactions||[]).slice(0,10).map(function(p){
+        var inputs = {}; var outputs = []; var upd = {}; var full = '';
+        try { inputs = JSON.parse(p.inputsJson||'{}'); } catch(e) {}
+        try { outputs = JSON.parse(p.outputsJson||'[]'); } catch(e) {}
+        try { upd = JSON.parse(p.updatedStateJson||'{}'); } catch(e) {}
+        try { full = JSON.stringify({ interaction: p.interactionName, inputs: inputs, description: p.description||'', outputs: outputs, updated_state: upd }, null, 2); } catch(e) { full = ''; }
         return '<div class="card" style="margin-bottom:10px;"><div><strong>' + new Date(p.timestamp).toLocaleTimeString() + '</strong> — <code>' + esc(p.interactionName) + '</code></div>'
           + '<div>By: ' + esc(p.agentId) + ' in ' + esc(p.room) + '</div>'
           + '<div class="muted">' + esc(p.description || '') + '</div>'
-          + '<details><summary>Outputs</summary><pre>' + esc(pre) + '</pre></details>'
+          + '<details><summary>Inputs</summary><pre>' + esc(JSON.stringify(inputs, null, 2)) + '</pre></details>'
+          + '<details><summary>Outputs</summary><pre>' + esc(JSON.stringify(outputs, null, 2)) + '</pre></details>'
+          + '<details><summary>Updated State</summary><pre>' + esc(JSON.stringify(upd, null, 2)) + '</pre></details>'
+          + '<details><summary>Full details</summary><pre>' + esc(full) + '</pre></details>'
           + '</div>';
       }).join('') || '<em class="muted">No interactions yet</em>';
       if ($('itemHistory')) $('itemHistory').innerHTML = historyHtml;
@@ -587,6 +615,7 @@ app.get('/', (req: Request, res: Response) => {
             <h3 id="itemTitle" style="margin:0;">Item</h3>
           </div>
           <details open style="margin-top:8px;"><summary>State</summary><pre id="itemState" class="muted">Select an item</pre></details>
+          <details style="margin-top:8px;" open><summary>Interactions</summary><pre id="itemInteractions" class="muted">(none)</pre></details>
           <div id="itemHistory" style="margin-top:8px;">Select an item</div>
         </div>
       </div>

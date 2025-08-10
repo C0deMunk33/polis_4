@@ -199,7 +199,7 @@
   // Items
   var selectedItemId = 0;
   function renderItems(){
-    Promise.all([fetchJSON('/api/items'), selectedItemId ? fetchJSON('/api/item-interactions?itemId='+encodeURIComponent(selectedItemId)+'&limit=50') : Promise.resolve([])])
+    Promise.all([fetchJSON('/api/items'), selectedItemId ? fetchJSON('/api/item-interactions?itemId='+encodeURIComponent(selectedItemId)+'&limit=10') : Promise.resolve([])])
       .then(function(res){
         var list = res[0]||[]; var interactions = res[1]||[];
         if ($('itemsPane')) {
@@ -230,13 +230,28 @@
         var stateObj = item ? JSON.parse(item.stateJson||'{}') : {};
         if ($('itemState')) $('itemState').textContent = JSON.stringify(stateObj, null, 2) || '{}';
       } catch(e) { if ($('itemState')) $('itemState').textContent = '{}'; }
-      var historyHtml = (interactions||[]).map(function(p){
-        var pre = '';
-        try { pre = JSON.stringify(JSON.parse(p.outputsJson||'[]'), null, 2); } catch(e) {}
+      try {
+        var inters = (tmpl && Array.isArray(tmpl.interactions)) ? tmpl.interactions : [];
+        var lines = inters.map(function(iv){
+          var inputs = (iv.action_inputs||[]).map(function(inp){ return (inp.name_and_amount||'')+': '+(inp.type||''); }).join(', ');
+          var outputs = (iv.action_outputs||[]).map(function(out){ return (out.name_and_amount||'')+': '+(out.type||''); }).join(', ');
+          return '- ' + (iv.name||'') + ' — ' + (iv.description||'') + (inputs? '\n  inputs: '+inputs : '') + (outputs? '\n  outputs: '+outputs : '');
+        }).join('\n');
+        if ($('itemInteractions')) $('itemInteractions').textContent = lines || '(none)';
+      } catch(e) { if ($('itemInteractions')) $('itemInteractions').textContent = '(none)'; }
+      var historyHtml = (interactions||[]).slice(0,10).map(function(p){
+        var inputs = {}; var outputs = []; var upd = {}; var full = '';
+        try { inputs = JSON.parse(p.inputsJson||'{}'); } catch(e) {}
+        try { outputs = JSON.parse(p.outputsJson||'[]'); } catch(e) {}
+        try { upd = JSON.parse(p.updatedStateJson||'{}'); } catch(e) {}
+        try { full = JSON.stringify({ interaction: p.interactionName, inputs: inputs, description: p.description||'', outputs: outputs, updated_state: upd }, null, 2); } catch(e) { full = ''; }
         return '<div class="card" style="margin-bottom:10px;"><div><strong>' + new Date(p.timestamp).toLocaleTimeString() + '</strong> — <code>' + esc(p.interactionName) + '</code></div>'
           + '<div>By: ' + esc(p.agentId) + ' in ' + esc(p.room) + '</div>'
           + '<div class="muted">' + esc(p.description || '') + '</div>'
-          + '<details><summary>Outputs</summary><pre>' + esc(pre) + '</pre></details>'
+          + '<details><summary>Inputs</summary><pre>' + esc(JSON.stringify(inputs, null, 2)) + '</pre></details>'
+          + '<details><summary>Outputs</summary><pre>' + esc(JSON.stringify(outputs, null, 2)) + '</pre></details>'
+          + '<details><summary>Updated State</summary><pre>' + esc(JSON.stringify(upd, null, 2)) + '</pre></details>'
+          + '<details><summary>Full details</summary><pre>' + esc(full) + '</pre></details>'
           + '</div>';
       }).join('') || '<em class="muted">No interactions yet</em>';
       if ($('itemHistory')) $('itemHistory').innerHTML = historyHtml;

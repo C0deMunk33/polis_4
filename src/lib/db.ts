@@ -70,6 +70,14 @@ export class PolisDB {
       updatedStateJson TEXT
     )`).run();
     this.db.prepare(`CREATE INDEX IF NOT EXISTS item_interactions_item_idx ON item_interactions(itemId, timestamp DESC)`).run();
+
+    // Rooms registry (explicit persistence separate from inference via passes/chat)
+    this.db.prepare(`CREATE TABLE IF NOT EXISTS rooms (
+      name TEXT PRIMARY KEY,
+      isPrivate INTEGER,
+      createdTs INTEGER
+    )`).run();
+    this.db.prepare(`CREATE INDEX IF NOT EXISTS rooms_created_idx ON rooms(createdTs DESC)`).run();
   }
 
   insertPass(rec: AgentPassRecord): number {
@@ -136,6 +144,22 @@ export class PolisDB {
 
   listChatRooms(): { room: string; lastTimestamp: number }[] {
     const rows = this.db.prepare(`SELECT room, MAX(timestamp) as lastTimestamp FROM chat_messages GROUP BY room ORDER BY lastTimestamp DESC`).all();
+    return rows as any[];
+  }
+
+  // Rooms API
+  upsertRoom(rec: { name: string; isPrivate: boolean; createdTs?: number }): void {
+    const now = rec.createdTs ?? Date.now();
+    this.db.prepare(`INSERT INTO rooms(name, isPrivate, createdTs) VALUES(?, ?, ?)
+      ON CONFLICT(name) DO UPDATE SET isPrivate=excluded.isPrivate`).run(rec.name, rec.isPrivate ? 1 : 0, now);
+  }
+
+  setRoomVisibility(name: string, isPrivate: boolean): void {
+    this.db.prepare(`UPDATE rooms SET isPrivate = ? WHERE name = ?`).run(isPrivate ? 1 : 0, name);
+  }
+
+  listPersistedRooms(): { name: string; isPrivate: number; createdTs: number }[] {
+    const rows = this.db.prepare(`SELECT name, isPrivate, createdTs FROM rooms ORDER BY createdTs DESC`).all();
     return rows as any[];
   }
 

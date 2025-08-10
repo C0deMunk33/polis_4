@@ -74,9 +74,11 @@ export class Room {
         }
         case "makePrivate":
           this.isPrivate = true;
+          try { (this.polis as any)['db']?.setRoomVisibility?.(this.name, true); } catch {}
           return `Room ${this.name} is now private`;
         case "makePublic":
           this.isPrivate = false;
+          try { (this.polis as any)['db']?.setRoomVisibility?.(this.name, false); } catch {}
           return `Room ${this.name} is now public`;
         case "leaveRoom": {
           // Ensure agent exits chat and return to directory
@@ -329,6 +331,7 @@ export class Polis {
           const { name, visibility } = toolcall.parameters as any;
           if (!name) return "Error: name required";
           const room = this.getOrCreateRoom(String(name), String(visibility ?? 'public') === 'private');
+          try { (this as any).db?.upsertRoom?.({ name: room.name, isPrivate: room.isPrivate, createdTs: Date.now() }); } catch {}
           return `Created room ${room.name} (${room.isPrivate ? 'private' : 'public'})`;
         }
         case "createPrivateRoomAndInvite": {
@@ -336,6 +339,7 @@ export class Polis {
           if (!name || !inviteAgentId) return "Error: name and inviteAgentId required";
           const room = this.getOrCreateRoom(String(name), true);
           room.invites.add(String(inviteAgentId));
+          try { (this as any).db?.upsertRoom?.({ name: room.name, isPrivate: true, createdTs: Date.now() }); } catch {}
           return `Created private room ${room.name} and invited #${inviteAgentId}`;
         }
         case "joinRoom": {
