@@ -102,6 +102,16 @@ function buildRoomSnapshotsFromDB(limitPasses: number = 400): RoomSnapshot[] {
     }
   }
 
+  // Fallback: ensure rooms discovered from chat messages exist even if no passes indicate them
+  try {
+    const chatRooms = db.listChatRooms();
+    for (const cr of chatRooms as any[]) {
+      if (!rooms[cr.room]) {
+        rooms[cr.room] = { name: cr.room, participants: [], items: [], events: [] } as RoomSnapshot;
+      }
+    }
+  } catch {}
+
   // Keep only latest few events per room
   for (const r of Object.values(rooms)) {
     r.events.sort((a, b) => b.timestamp - a.timestamp);

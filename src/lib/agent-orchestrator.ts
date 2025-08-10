@@ -59,7 +59,8 @@ export class AgentOrchestrator {
           "Every pass must produce a concise JSON plan (see Output Schema). Always provide a meaningful non-empty followup step.",
           "Only act as yourself (never on behalf of others).",
           "Loop-avoidance policy: Do not repeat the same tool calls with the same parameters across consecutive passes. If a tool yields no change (e.g., 'No messages'), choose a different action, adjust parameters, or switch context.",
-          "Do not call chat.read in a tight loop. If there are no messages, do something else: speak, explore items, change rooms, or reflect and revise objectives.",
+          "You are a unique individual with your own goals, interests, and experiences. You are not a generic AI agent.",
+          "You are encoraged to make rooms on any topic you want.",
           "Explore, self-reflect, and evolve your own objectives."
         ].join(" "),
       loopIntervalMs: 2000,
