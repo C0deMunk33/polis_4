@@ -110,7 +110,9 @@
             if (pre && msgs && msgs.length) {
               var existing = pre.textContent || '';
               msgs.forEach(function(m){ state.lastChatTs = Math.max(state.lastChatTs, Number(m.timestamp)||0); existing += (existing? '\n' : '') + '['+new Date(m.timestamp).toLocaleTimeString()+'] '+m.handle+' (#'+m.agentId+'): '+m.content; });
-              pre.textContent = existing;
+              var lines = existing.split('\n');
+              if (lines.length > 20) lines = lines.slice(-20);
+              pre.textContent = lines.join('\n');
             }
           });
         });
@@ -144,7 +146,9 @@
           var chatEl = $('chat-'+name); var pre = chatEl ? chatEl.querySelector('pre') : null; if (!pre) return;
           var existing = pre.textContent || '';
           msgs.forEach(function(m){ roomState[name].lastChatTs = Math.max(roomState[name].lastChatTs, Number(m.timestamp)||0); existing += (existing? '\n' : '') + '['+new Date(m.timestamp).toLocaleTimeString()+'] '+m.handle+' (#'+m.agentId+'): '+m.content; });
-          pre.textContent = existing;
+          var lines = existing.split('\n');
+          if (lines.length > 20) lines = lines.slice(-20);
+          pre.textContent = lines.join('\n');
         }).catch(function(){});
       });
     }).catch(function(){});
