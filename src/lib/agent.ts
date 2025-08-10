@@ -97,37 +97,71 @@ export class Agent {
     }
 
     private buildMessageBuffer(menuText: string | undefined, preResults: string, selfInstructions: string): { system: string; messages: { role: 'user' | 'assistant'; content: string }[] } {
-        const system = this.systemPrompt;
-
-        const segments: string[] = [];
+        // Build system prompt with general guidance
+        const systemSegments: string[] = [];
         const catalog = this.buildToolCatalog();
         if (catalog.trim().length > 0) {
-            segments.push(`[Tool Catalog]\nEach line is a valid tool call example as JSON:\n${catalog}`);
+            systemSegments.push(`[Tool Catalog]\nEach line is a valid tool call example as JSON:\n${catalog}`);
         }
         const outputSchema = zodToJsonSchema(AgentPassSchema, 'AgentPass');
-        segments.push(`[Output Schema]\nPlease reply in the following format (strict JSON matching this schema):\n${JSON.stringify(outputSchema, null, 2)}`);
-
-        if (menuText && menuText.trim().length > 0) {
-            segments.push(`[Menu]\n${menuText.trim()}`);
-        }
-        if (preResults.trim().length > 0) {
-            segments.push(`[Pre-Pass Results]\n${preResults.trim()}`);
-        }
+        systemSegments.push(`[Output Schema]\nPlease reply in the following format (strict JSON matching this schema):\n${JSON.stringify(outputSchema, null, 2)}`);
+        // Menu will be moved to an assistant message just before the user message
         if (this.historySummaries.length > 0) {
             const trimmed = this.historySummaries.slice(-this.maxHistorySummaries);
-            segments.push(`[Pass History]\n${trimmed.join('\n')}`);
-            // Provide a hint if recent attempts look repetitive (very lightweight heuristic)
             const recent = trimmed.slice(-this.recentToolCallWindow).join(' | ');
             if (/No messages/i.test(preResults) || /chat\.read/i.test(recent)) {
-                segments.push(`[Anti-Loop Hint]\nAvoid repeating chat.read when there are no new messages. Try: chat.speak, explore items (listItems/myItems), createItem, or change rooms.`);
+                systemSegments.push(`[Anti-Loop Hint]\nAvoid repeating chat.read when there are no new messages. Try: chat.speak, explore items (listItems/myItems), createItem, or change rooms.`);
             }
         }
-        if (selfInstructions.trim().length > 0) {
-            segments.push(`[Self Instructions]\n${selfInstructions.trim()}`);
+        const system = [this.systemPrompt, ...systemSegments].filter(Boolean).join('\n\n');
+
+        const messages: { role: 'user' | 'assistant'; content: string }[] = [];
+
+        // Move pass history into an assistant message
+        if (this.historySummaries.length > 0) {
+            const trimmed = this.historySummaries.slice(-this.maxHistorySummaries);
+            messages.push({ role: 'assistant', content: `[Pass History]\n${trimmed.join('\n')}` });
         }
 
-        const content = segments.join('\n\n');
-        return { system, messages: content ? [{ role: 'user', content }] : [] };
+        // Primary user instruction will be appended last
+        const userSegments: string[] = [];
+        if (selfInstructions.trim().length > 0) {
+            userSegments.push(`[Self Instructions]\n${selfInstructions.trim()}`);
+        }
+        // Break out tool results as individual assistant messages
+        if (preResults && preResults.trim().length > 0) {
+            const text = preResults.trim();
+            const sections: Array<{ name: string; content: string }> = [];
+            const regex = /\-\s+([^:]+):\s*\n?([\s\S]*?)(?=\n\-\s+[^:]+:|$)/g;
+            let match: RegExpExecArray | null;
+            while ((match = regex.exec(text)) !== null) {
+                const name = String(match[1] || '').trim();
+                const content = String(match[2] || '').trim();
+                if (name) sections.push({ name, content });
+            }
+            if (sections.length === 0) {
+                // Fallback: send as a single assistant message
+                messages.push({ role: 'assistant', content: `[Pre-Pass Results]\n${text}` });
+            } else {
+                for (const sec of sections) {
+                    const header = `[Tool Result] ${sec.name}`;
+                    const body = sec.content || '(none)';
+                    messages.push({ role: 'assistant', content: `${header}\n${body}` });
+                }
+            }
+        }
+
+        // Add menu snapshot as the last assistant message before the user prompt
+        if (menuText && menuText.trim().length > 0) {
+            messages.push({ role: 'assistant', content: `[Menu]\n${menuText.trim()}` });
+        }
+
+        // Append the user instruction as the final message
+        if (userSegments.length > 0) {
+            messages.push({ role: 'user', content: userSegments.join('\n\n') });
+        }
+
+        return { system, messages };
     }
 
     async doPass(selfInstructions: string, preResults: string = ""): Promise<AgentPass> {

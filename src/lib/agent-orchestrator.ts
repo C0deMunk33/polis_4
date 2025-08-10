@@ -54,7 +54,7 @@ export class AgentOrchestrator {
           "You are free to use any tool available to you at any time.",
           "To use room chat, first 'enter' with a handle after you join the room.",
           "Room switching policy: You can only create or join a different room after you leave your current room.",
-          "Use room-level tools: 'joinRoom' to enter a room, and 'leaveRoom' (in the Room Actions tools) to exit a room (this will also leave chat).",
+          "Use room-level tools: 'joinRoom' to enter a room, and 'leaveRoom' (in the Room Actions tools) to exit a room.",
           "Pick a simple memorable handle that matches your personality when you enter.",
           "Your goal is to live and interact: build relationships, collaborate, explore tools, and evolve your own objectives.",
           "You are encouraged to actively refine your goals as you learn. Use 'setGoal' (Identity toolset) to update your current goal at any time, and consult 'getSelf' to reflect.",
@@ -62,11 +62,8 @@ export class AgentOrchestrator {
           "Only act as yourself (never on behalf of others).",
           "Loop-avoidance policy: Do not repeat the same tool calls with the same parameters across consecutive passes. If a tool yields no change (e.g., 'No messages'), choose a different action, adjust parameters, or switch context.",
           "You are a unique individual with your own goals, interests, and experiences. You are not a generic AI agent.",
-          "You are encoraged to make rooms on any topic you want.",
+          "You are encoraged to make rooms on any topic you want (you must leave your current room to do so).",
           "Explore, self-reflect, and evolve your own objectives.",
-          "Private rooms: To create a private room and invite someone, either:",
-          " - Call 'createPrivateRoomAndInvite' with { name, inviteAgentId }, then tell them to call 'acceptInvite' with { name }.",
-          " - Or: Call 'createRoom' with { name, visibility: 'private' }, then 'joinRoom' with { name }, then in the room admin tools call 'invite' with { agentId }. The invitee must call 'acceptInvite' with { name } to enter.",
           "Agents cannot 'joinRoom' for a private room unless they have an invite."
         ].join(" "),
       loopIntervalMs: 2000,
@@ -149,10 +146,18 @@ export class AgentOrchestrator {
   private computePreResults(reg: RegisteredAgent): string {
     const outputs: string[] = [];
     const currentMenu = reg.agent.getMenuInstance();
+    const inDirectory = !!currentMenu.toolsets.find(ts => ts === this.polis.getDirectoryToolset());
+    const inRoom = !inDirectory;
     try { const selfStr = currentMenu.callTool(reg.agent, { name: 'getSelf', parameters: {} }); if (selfStr && !selfStr.startsWith('Unknown tool')) outputs.push(`- self: ${selfStr}`); } catch {}
-    try { const rooms = currentMenu.callTool(reg.agent, { name: 'listRooms', parameters: {} }); if (rooms && !rooms.startsWith('Unknown tool')) outputs.push(`- rooms: \n${rooms}`); } catch {}
-    try { const recent = currentMenu.callTool(reg.agent, { name: 'recentActivity', parameters: { limit: 5 } as any }); if (recent && !recent.startsWith("Unknown tool")) outputs.push(`- recentActivity: \n${recent}`); } catch {}
-    try { const who = currentMenu.callTool(reg.agent, { name: 'who', parameters: {} }); if (who && who.trim().length > 0 && !who.startsWith('Unknown tool')) outputs.push(`- who: ${who}`); } catch {}
+    // Only include room-related info if in a room
+    if (inRoom) {
+      try { const recent = currentMenu.callTool(reg.agent, { name: 'recentActivity', parameters: { limit: 5 } as any }); if (recent && !recent.startsWith("Unknown tool")) outputs.push(`- recentActivity: \n${recent}`); } catch {}
+      try { const who = currentMenu.callTool(reg.agent, { name: 'who', parameters: {} }); if (who && who.trim().length > 0 && !who.startsWith('Unknown tool')) outputs.push(`- who: ${who}`); } catch {}
+    }
+    // Only include listRooms if not currently in a room
+    if (!inRoom) {
+      try { const rooms = currentMenu.callTool(reg.agent, { name: 'listRooms', parameters: {} }); if (rooms && !rooms.startsWith('Unknown tool')) outputs.push(`- rooms: \n${rooms}`); } catch {}
+    }
     const preCalls = this.options.prePassToolCalls ?? [];
     for (const call of preCalls) {
       // Never auto-call chat.enter on behalf of agents
