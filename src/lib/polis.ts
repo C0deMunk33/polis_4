@@ -80,8 +80,8 @@ export class Room {
           const limit = Number((toolcall.parameters as any).limit ?? 5);
           let chat = "";
           try {
-            // Use DB-backed recent chat so admin (web) messages are included and apply a hard cap of 20
-            chat = this.polis.getRecentChatText(this.name, Math.min(20, limit));
+            // Use DB-backed recent chat and personalize own messages as "You"; cap to 20
+            chat = this.polis.getRecentChatText(this.name, Math.min(20, limit), agent.getId());
           } catch { chat = "(chat unavailable)"; }
           const itemsList = this.items.length === 0 ? "No items" : this.items.map((ri, idx) => `[${idx}] ${ri.item.template.name} (owner:#${ri.ownerId})`).join("\n");
           return `Room: ${this.name}\nItems:\n${itemsList}\n\nRecent Chat:\n${chat}`;
@@ -197,8 +197,8 @@ export class Polis {
     } catch {}
   }
 
-  // Read recent chat for a room from DB (admin and agents included)
-  getRecentChatText(room: string, limit: number = 20): string {
+  // Read recent chat for a room from DB. If selfAgentId is provided, own messages are labeled as "You".
+  getRecentChatText(room: string, limit: number = 20, selfAgentId?: string): string {
     try {
       const max = Math.min(20, Math.max(0, Number(limit) || 0));
       const rows = this.db?.listRecentChatByRoom(room, max) ?? [];
@@ -206,7 +206,10 @@ export class Polis {
       return rows
         .map(m => {
           const ts = new Date(m.timestamp).toISOString();
-          return `[${ts}] ${m.handle} (#${m.agentId}): ${m.content}`;
+          const who = selfAgentId && String(m.agentId) === String(selfAgentId)
+            ? "You"
+            : `${m.handle} (#${m.agentId})`;
+          return `[${ts}] ${who}: ${m.content}`;
         })
         .join("\n");
     } catch {
